@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* Custom scrollbar and retro LCD glow effects for DR-202 */
+@layer utilities {
+  .lcd-glow {
+    text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+  }
+}
