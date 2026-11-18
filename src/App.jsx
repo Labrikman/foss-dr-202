@@ -1599,96 +1599,24 @@ const handleSlotTouchEnd = () => {
                 className="hidden"
               />
             </div>
-            {/* --- 8 QUICK-ACCESS PRESET BANK BUTTONS --- */}
-            <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-700 shadow-inner my-3">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase">
-                  Bank Slots (Tap to Load • Hold 2s / Right-Click to Assign)
-                </span>
-                <span className="text-[10px] text-amber-500 font-mono">
-                  Active: {patterns[currentPattern]?.name || `Pattern ${currentPattern + 1}`}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                {bankSlots.map((presetIdx, slotNum) => {
-                  const assignedPattern = patterns[presetIdx];
-                  const isActive = currentPattern === presetIdx;
-
-                  return (
-                    <div key={slotNum} className="relative">
-                      {/* Main Slot Button */}
-                    <button
-                      onClick={() => {
-                        // 1. Set the active pattern index to this slot's assigned preset
-                        setCurrentPattern(presetIdx);
-                        
-                        // 2. If your app requires copying the preset steps/bpm into active sequencer state, 
-                        // do it here (uncomment the line below if your app uses a separate activePattern data state):
-                        setActivePatternData(patterns[presetIdx]);
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setConfiguringSlotIndex(slotNum);
-                      }}
-                      onTouchStart={() => handleSlotTouchStart(slotNum)}
-                      onTouchEnd={handleSlotTouchEnd}
-                      onMouseDown={() => handleSlotTouchStart(slotNum)}
-                      onMouseUp={handleSlotTouchEnd}
-                      className={`w-full h-12 flex flex-col items-center justify-center rounded border font-mono text-xs transition-all shadow-md active:translate-y-0.5 ${
-                        isActive
-                          ? 'bg-amber-500 text-zinc-950 border-amber-300 font-bold shadow-amber-500/50'
-                          : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-600'
-                      }`}
-                    >
-                    <span className="text-[9px] opacity-70">SLOT {slotNum + 1}</span>
-                    <span className="truncate w-full px-1 text-[10px]">
-                      {assignedPattern?.name ? assignedPattern.name.substring(0, 8) : `#${presetIdx + 1}`}
-                    </span>
+            <div>
+              <span className="block text-[9px] font-black uppercase text-zinc-700 mb-1">
+                90s Groove Presets:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {patterns.map((p, idx) => (
+                  <button
+                    key={p.id}
+                    onClick={() => selectPattern(idx)}
+                    className={`px-2 py-1 rounded text-[10px] font-mono font-black transition cursor-pointer ${
+                      patternIndex === idx
+                        ? 'bg-zinc-900 text-amber-400 shadow'
+                        : 'bg-zinc-300/80 text-zinc-800 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {p.id}
                   </button>
-
-                      {/* Configuration Dropdown Modal for this Slot */}
-                      {configuringSlotIndex === slotNum && (
-                        <div className="absolute z-50 left-0 top-14 w-48 bg-zinc-900 border border-amber-500/50 rounded shadow-2xl p-2">
-                          <div className="flex justify-between items-center mb-1 pb-1 border-b border-zinc-800 text-[10px] font-bold text-amber-400">
-                            <span>ASSIGN SLOT {slotNum + 1}</span>
-                            <button
-                              onClick={() => setConfiguringSlotIndex(null)}
-                              className="text-zinc-400 hover:text-white px-1"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <select
-                            autoFocus
-                            value={presetIdx}
-                            onChange={(e) => {
-                              const newPresetIdx = parseInt(e.target.value, 10);
-                              
-                              // 1. Update the slot bank mapping
-                              const updatedSlots = [...bankSlots];
-                              updatedSlots[slotNum] = newPresetIdx;
-                              setBankSlots(updatedSlots);
-
-                              // 2. Immediately switch to this pattern (replace setCurrentPattern with your app's actual state setter if different)
-                              setCurrentPattern(newPresetIdx);
-
-                              // 3. Close the popup
-                              setConfiguringSlotIndex(null);
-                            }}
-                            className="w-full bg-zinc-950 text-zinc-200 text-xs p-1.5 rounded border border-zinc-700 focus:outline-none focus:border-amber-500 max-h-40"
-                          >
-                            {patterns.map((p, idx) => (
-                              <option key={idx} value={idx}>
-                                {idx + 1}. {p.name} ({p.bpm} BPM)
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
           </div>
