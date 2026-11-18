@@ -1018,18 +1018,17 @@ const handleImportPreset = async (e) => {
 
   const currentPattern = patterns[patternIndex];
 
-  // Helper for long press timer (iPad / Touch support)
-let pressTimer = null;
+  const pressTimerRef = useRef(null);
 
-const handleSlotTouchStart = (index) => {
-  pressTimer = setTimeout(() => {
-    setConfiguringSlotIndex(index);
-  }, 2000); // 2 seconds hold
-};
+  const handleSlotTouchStart = (index) => {
+    pressTimerRef.current = setTimeout(() => {
+      setConfiguringSlotIndex(index);
+    }, 1500); // 2 secondes
+  };
 
-const handleSlotTouchEnd = () => {
-  if (pressTimer) clearTimeout(pressTimer);
-};
+  const handleSlotTouchEnd = () => {
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-900 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 lg:p-8 font-sans select-none overflow-x-hidden">
@@ -1599,24 +1598,89 @@ const handleSlotTouchEnd = () => {
                 className="hidden"
               />
             </div>
-            <div>
-              <span className="block text-[9px] font-black uppercase text-zinc-700 mb-1">
-                90s Groove Presets:
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {patterns.map((p, idx) => (
-                  <button
-                    key={p.id}
-                    onClick={() => selectPattern(idx)}
-                    className={`px-2 py-1 rounded text-[10px] font-mono font-black transition cursor-pointer ${
-                      patternIndex === idx
-                        ? 'bg-zinc-900 text-amber-400 shadow'
-                        : 'bg-zinc-300/80 text-zinc-800 hover:bg-zinc-200'
-                    }`}
-                  >
-                    {p.id}
-                  </button>
-                ))}
+            {/* --- 8 QUICK-ACCESS PRESET BANK BUTTONS --- */}
+            <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-700 shadow-inner my-3">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase">
+                  Bank Slots (Tap to Load • Hold 2s / Right-Click to Assign)
+                </span>
+                <span className="text-[10px] text-amber-500 font-mono">
+                  {/* CORRECTION 1 : patternIndex au lieu de currentPattern */}
+                  Active: {patterns[patternIndex]?.name || `Pattern ${patternIndex + 1}`}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {bankSlots.map((presetIdx, slotNum) => {
+                  const assignedPattern = patterns[presetIdx];
+                  const isActive = patternIndex === presetIdx;
+
+                  return (
+                    <div key={slotNum} className="relative">
+                      {/* Main Slot Button */}
+                      <button
+                        onClick={() => {
+                          selectPattern(presetIdx);
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setConfiguringSlotIndex(slotNum);
+                        }}
+                        onTouchStart={() => handleSlotTouchStart(slotNum)}
+                        onTouchEnd={handleSlotTouchEnd}
+                        onMouseDown={() => handleSlotTouchStart(slotNum)}
+                        onMouseUp={handleSlotTouchEnd}
+                        className={`w-full h-12 flex flex-col items-center justify-center rounded border font-mono text-xs transition-all shadow-md active:translate-y-0.5 ${
+                          isActive
+                            ? 'bg-amber-500 text-zinc-950 border-amber-300 font-bold shadow-amber-500/50'
+                            : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-600'
+                        }`}
+                      >
+                        <span className="text-[9px] opacity-70">SLOT {slotNum + 1}</span>
+                        <span className="truncate w-full px-1 text-[10px]">
+                          {assignedPattern?.name ? assignedPattern.name.substring(0, 8) : `#${presetIdx + 1}`}
+                        </span>
+                      </button>
+
+                      {/* Configuration Dropdown Modal for this Slot */}
+                      {configuringSlotIndex === slotNum && (
+                        <div className="absolute z-50 left-0 top-14 w-48 bg-zinc-900 border border-amber-500/50 rounded shadow-2xl p-2">
+                          <div className="flex justify-between items-center mb-1 pb-1 border-b border-zinc-800 text-[10px] font-bold text-amber-400">
+                            <span>ASSIGN SLOT {slotNum + 1}</span>
+                            <button
+                              onClick={() => setConfiguringSlotIndex(null)}
+                              className="text-zinc-400 hover:text-white px-1"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <select
+                            autoFocus
+                            value={presetIdx}
+                            onChange={(e) => {
+                              const newPresetIdx = parseInt(e.target.value, 10);
+                              
+                              const updatedSlots = [...bankSlots];
+                              updatedSlots[slotNum] = newPresetIdx;
+                              setBankSlots(updatedSlots);
+
+                              selectPattern(newPresetIdx);
+
+                              setConfiguringSlotIndex(null);
+                            }}
+                            className="w-full bg-zinc-950 text-zinc-200 text-xs p-1.5 rounded border border-zinc-700 focus:outline-none focus:border-amber-500 max-h-40"
+                          >
+                            {patterns.map((p, idx) => (
+                              <option key={idx} value={idx}>
+                                {idx + 1}. {p.name} ({p.bpm} BPM)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
