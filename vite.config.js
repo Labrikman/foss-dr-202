@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: '/foss-dr-202/',
+  base: '/foss-dr-202/'
 })
 
 
