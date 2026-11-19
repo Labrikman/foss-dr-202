@@ -4,7 +4,6 @@ import {
   Square,
   Circle,
   Volume2,
-  VolumeX,
   Sliders,
   Music,
   Zap,
@@ -13,9 +12,18 @@ import {
   RotateCcw,
   Radio,
   Disc,
-  Power
+  Power,
+  Shuffle
 } from 'lucide-react';
-import { exportPresetToFile, importPresetFromFile } from './presetManager';
+
+import { 
+  exportPresetToFile,
+  importPresetFromFile,
+  getSavedUserPresets,
+  saveUserPresetToStorage,
+  deleteUserPresetFromStorage,
+  exportAllUserPresetsToFile, 
+} from './presetManager';
 import { DR202_100_PRESETS } from './presets/presetsBank';
 
 /**
@@ -113,6 +121,11 @@ class DR202AudioEngine {
     this.resonance = 40;
     this.decay = 60;
     this.masterVolume = 0.85;
+
+    this.drumPan = 50; // 0 = Left, 50 = Center, 100 = Right
+    this.bassPan = 50;
+    this.drumPanner = null;
+    this.bassPanner = null;
   }
 
   init() {
@@ -140,6 +153,13 @@ class DR202AudioEngine {
       this.compressor.connect(this.masterGain);
       this.masterGain.connect(this.ctx.destination);
 
+      // Création des panners stéréo L/R indépendants
+      this.drumPanner = this.ctx.createStereoPanner();
+      this.bassPanner = this.ctx.createStereoPanner();
+
+      this.drumPanner.connect(this.masterFilter);
+      this.bassPanner.connect(this.masterFilter);
+      this.updatePanParams();
       // Pre-generate 2 seconds of white noise for snares, hats, claps
       const bufferSize = this.ctx.sampleRate * 2;
       this.noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
@@ -154,18 +174,33 @@ class DR202AudioEngine {
     }
   }
 
-  setParams({ cutoff, resonance, decay, volume }) {
-    if (cutoff !== undefined) this.cutoff = cutoff;
-    if (resonance !== undefined) this.resonance = resonance;
-    if (decay !== undefined) this.decay = decay;
-    if (volume !== undefined) {
-      this.masterVolume = volume;
-      if (this.masterGain && this.ctx) {
-        this.masterGain.gain.setTargetAtTime(volume, this.ctx.currentTime, 0.015);
+  setParams({ cutoff, resonance, decay, volume, drumPan, bassPan }) {
+      if (cutoff !== undefined) this.cutoff = cutoff;
+      if (resonance !== undefined) this.resonance = resonance;
+      if (decay !== undefined) this.decay = decay;
+      if (volume !== undefined) {
+        this.masterVolume = volume;
+        if (this.masterGain && this.ctx) {
+          this.masterGain.gain.setTargetAtTime(volume, this.ctx.currentTime, 0.015);
+        }
+      }
+      if (drumPan !== undefined) this.drumPan = drumPan;
+      if (bassPan !== undefined) this.bassPan = bassPan;
+      this.updateFilterParams();
+      this.updatePanParams();
+    }
+
+    updatePanParams() {
+      if (!this.ctx) return;
+      if (this.drumPanner) {
+        const p = (this.drumPan - 50) / 50; // Convertit 0..100 en -1..+1
+        this.drumPanner.pan.setTargetAtTime(p, this.ctx.currentTime, 0.02);
+      }
+      if (this.bassPanner) {
+        const p = (this.bassPan - 50) / 50;
+        this.bassPanner.pan.setTargetAtTime(p, this.ctx.currentTime, 0.02);
       }
     }
-    this.updateFilterParams();
-  }
 
   updateFilterParams() {
     if (!this.masterFilter || !this.ctx) return;
@@ -244,7 +279,7 @@ class DR202AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.36 * decayScale);
 
     osc.connect(gain);
-    gain.connect(this.masterFilter);
+    gain.connect(this.drumPanner);
     osc.start(t);
     osc.stop(t + 0.38 * decayScale);
 
@@ -258,7 +293,7 @@ class DR202AudioEngine {
     clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
 
     clickOsc.connect(clickGain);
-    clickGain.connect(this.masterFilter);
+    clickGain.connect(this.drumPanner);
     clickOsc.start(t);
     clickOsc.stop(t + 0.03);
   }
@@ -274,7 +309,7 @@ class DR202AudioEngine {
     oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.14 * decayScale);
 
     osc.connect(oscGain);
-    oscGain.connect(this.masterFilter);
+    oscGain.connect(this.drumPanner);
     osc.start(t);
     osc.stop(t + 0.15 * decayScale);
 
@@ -292,7 +327,7 @@ class DR202AudioEngine {
 
     noise.connect(filter);
     filter.connect(noiseGain);
-    noiseGain.connect(this.masterFilter);
+    noiseGain.connect(this.drumPanner);
     noise.start(t);
     noise.stop(t + 0.22 * decayScale);
   }
@@ -318,7 +353,7 @@ class DR202AudioEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.masterFilter);
+    gain.connect(this.drumPanner);
     noise.start(t);
     noise.stop(t + 0.26 * decayScale);
   }
@@ -338,7 +373,7 @@ class DR202AudioEngine {
 
     osc1.connect(gain);
     osc2.connect(gain);
-    gain.connect(this.masterFilter);
+    gain.connect(this.drumPanner);
 
     osc1.start(t);
     osc2.start(t);
@@ -366,7 +401,7 @@ class DR202AudioEngine {
     noise.connect(hp);
     hp.connect(bp);
     bp.connect(gain);
-    gain.connect(this.masterFilter);
+    gain.connect(this.drumPanner);
 
     noise.start(t);
     noise.stop(t + duration + 0.01);
@@ -383,7 +418,7 @@ class DR202AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.24 * decayScale);
 
     osc.connect(gain);
-    gain.connect(this.masterFilter);
+    gain.connect(this.drumPanner);
     osc.start(t);
     osc.stop(t + 0.26 * decayScale);
   }
@@ -402,7 +437,7 @@ class DR202AudioEngine {
 
     noise.connect(hp);
     hp.connect(gain);
-    gain.connect(this.masterFilter);
+    gain.connect(this.drumPanner);
     noise.start(t);
     noise.stop(t + 0.8 * decayScale);
   }
@@ -429,7 +464,7 @@ class DR202AudioEngine {
     osc1.connect(bp);
     osc2.connect(bp);
     bp.connect(gain);
-    gain.connect(this.masterFilter);
+    gain.connect(this.drumPanner);
 
     osc1.start(t);
     osc2.start(t);
@@ -480,7 +515,7 @@ class DR202AudioEngine {
     oscSub.connect(subGain);
     subGain.connect(bassFilter);
     bassFilter.connect(ampGain);
-    ampGain.connect(this.masterFilter);
+    ampGain.connect(this.bassPanner);
 
     oscSaw.start(t);
     oscSub.start(t);
@@ -631,7 +666,8 @@ export default function App() {
   const [swing, setSwing] = useState(PRESET_PATTERNS[0].swing);
   const [patternIndex, setPatternIndex] = useState(0);
   const [bank, setBank] = useState('A'); // A = Preset, B = User Edit
-
+  const [fixTempo, setFixTempo] = useState(false);
+  const [fixGroove, setFixGroove] = useState(false);
   // Track & Mode Selection ('DRUM' | 'BASS')
   const [activeTrack, setActiveTrack] = useState('DRUM');
   const [selectedDrumVoice, setSelectedDrumVoice] = useState('kick');
@@ -642,16 +678,25 @@ export default function App() {
   const [cutoff, setCutoff] = useState(PRESET_PATTERNS[0].cutoff);
   const [resonance, setResonance] = useState(PRESET_PATTERNS[0].resonance);
   const [decay, setDecay] = useState(PRESET_PATTERNS[0].decay);
+  const [drumPan, setDrumPan] = useState(50); // 50 = Centre
+  const [bassPan, setBassPan] = useState(50); // 50 = Centre
   const [masterVol, setMasterVol] = useState(85);
 
   // Pattern Data (cloned from presets so user can live-edit)
   const [patterns, setPatterns] = useState(PRESET_PATTERNS);
 
   // Tracks which preset index (0 to 199) is assigned to each of the 8 hardware slots
-const [bankSlots, setBankSlots] = useState([0, 1, 2, 3, 4, 5, 6, 7]);
+  const [bankSlots, setBankSlots] = useState([0, 1, 2, 3, 4, 5, 6, 7]);
 
-// Tracks which slot currently has its configuration menu open (null if closed)
-const [configuringSlotIndex, setConfiguringSlotIndex] = useState(null);
+  // Tracks which slot currently has its configuration menu open (null if closed)
+  const [configuringSlotIndex, setConfiguringSlotIndex] = useState(null);
+  
+
+  // StorelocalStorage
+  const [userPresets, setUserPresets] = useState(() => getSavedUserPresets());
+  const [selectedUserPresetUid, setSelectedUserPresetUid] = useState('');
+  const [customPresetName, setCustomPresetName] = useState('');
+
   // Part Mutes & Solos
   const [mutedParts, setMutedParts] = useState({
     KICK: false,
@@ -719,8 +764,10 @@ const [configuringSlotIndex, setConfiguringSlotIndex] = useState(null);
       resonance,
       decay,
       volume: masterVol / 100,
+      drumPan,
+      bassPan,
     });
-  }, [cutoff, resonance, decay, masterVol]);
+  }, [cutoff, resonance, decay, masterVol, drumPan, bassPan]);
 
   // Unlock Audio Handler
   const handleUnlockAudio = useCallback(() => {
@@ -736,24 +783,53 @@ const [configuringSlotIndex, setConfiguringSlotIndex] = useState(null);
     }, 130);
   }, []);
 
-  // Load a Preset Pattern
+// Load a Preset Pattern
   const selectPattern = useCallback(
     (newIndex) => {
       const wrapped = (newIndex + patterns.length) % patterns.length;
-      setPatternIndex(wrapped);
       const pat = patterns[wrapped];
-      setBpm(pat.bpm);
-      setSwing(pat.swing);
+      const nextBpm = fixTempo ? stateRef.current.bpm : pat.bpm;
+      const nextSwing = fixGroove ? stateRef.current.swing : pat.swing;
+
+      setPatternIndex(wrapped);
+      if (!fixTempo) setBpm(nextBpm);
+      if (!fixGroove) setSwing(nextSwing);
       setCutoff(pat.cutoff);
       setResonance(pat.resonance);
       setDecay(pat.decay);
       setBassOctave(pat.bassOctave);
       setLastTriggeredLabel(`LOAD ${pat.id}`);
+
+      stateRef.current = {
+        ...stateRef.current,
+        patternIndex: wrapped,
+        bpm: nextBpm,
+        swing: nextSwing,
+        bassOctave: pat.bassOctave,
+      };
+
+      audioEngine.setParams({
+        cutoff: pat.cutoff,
+        resonance: pat.resonance,
+        decay: pat.decay,
+      });
     },
-    [patterns]
+    [patterns, fixTempo, fixGroove]
   );
 
-  // Reset current pattern back to factory preset
+  const updateCurrentPatternTempoOrSwing = (nextBpm, nextSwing) => {
+      setPatterns((prev) => {
+        const next = [...prev];
+        next[patternIndex] = {
+          ...next[patternIndex],
+          bpm: nextBpm,
+          swing: nextSwing,
+        };
+        return next;
+      });
+    };
+
+    // Reset current pattern back to factory preset
   const handleResetPattern = () => {
     const factory = PRESET_PATTERNS[patternIndex];
     setPatterns((prev) => {
@@ -768,6 +844,177 @@ const [configuringSlotIndex, setConfiguringSlotIndex] = useState(null);
     selectPattern(patternIndex);
     setBank('A');
     setLastTriggeredLabel('FACTORY RST');
+  };
+
+  // Génère un pattern aléatoire musical sur le slot actif
+  const handleRandomizePreset = () => {
+    if (!audioUnlocked) handleUnlockAudio();
+
+    const randBool = (prob) => (Math.random() < prob ? 1 : 0);
+    const scaleNotes = ['C2', 'D#2', 'F2', 'G2', 'A#2', 'C3'];
+
+    // 1. Génération des pistes de batterie avec probabilités musicales
+    const newDrums = {
+      kick: Array.from({ length: 16 }, (_, i) =>
+        i === 0 ? 1 : i % 4 === 0 ? randBool(0.65) : randBool(0.2)
+      ),
+      snare: Array.from({ length: 16 }, (_, i) =>
+        i === 4 || i === 12 ? 1 : randBool(0.12)
+      ),
+      clap: Array.from({ length: 16 }, (_, i) =>
+        (i === 4 || i === 12) && Math.random() < 0.45 ? 1 : randBool(0.08)
+      ),
+      rim: Array.from({ length: 16 }, (_, i) =>
+        i % 2 === 1 ? randBool(0.22) : randBool(0.08)
+      ),
+      chh: Array.from({ length: 16 }, (_, i) =>
+        i % 2 === 0 ? randBool(0.85) : randBool(0.45)
+      ),
+      ohh: Array.from({ length: 16 }, (_, i) =>
+        i % 4 === 2 ? randBool(0.4) : randBool(0.08)
+      ),
+      tomLow: Array.from({ length: 16 }, (_, i) =>
+        i >= 12 ? randBool(0.25) : randBool(0.05)
+      ),
+      perc: Array.from({ length: 16 }, () => randBool(0.15)),
+    };
+
+    // 2. Génération de la ligne de basse (gamme mineure)
+    const newBass = Array.from({ length: 16 }, (_, i) => {
+      const prob = i % 4 === 0 ? 0.75 : 0.3;
+      if (Math.random() < prob) {
+        return scaleNotes[Math.floor(Math.random() * scaleNotes.length)];
+      }
+      return null;
+    });
+
+    // 3. Paramètres globaux (respecte FIX TEMPO et FIX GROOVE si activés)
+    const nextBpm = fixTempo ? bpm : Math.floor(Math.random() * (145 - 82 + 1)) + 82;
+    const nextSwing = fixGroove ? swing : Math.floor(Math.random() * (68 - 50 + 1)) + 50;
+    const nextCutoff = Math.floor(Math.random() * (95 - 35 + 1)) + 35;
+    const nextResonance = Math.floor(Math.random() * (75 - 15 + 1)) + 15;
+    const nextDecay = Math.floor(Math.random() * (85 - 35 + 1)) + 35;
+    const nextOctave = [-1, 0, 0, 1][Math.floor(Math.random() * 4)];
+
+    // 4. Mise à jour du pattern actif
+    setPatterns((prev) => {
+      const next = [...prev];
+      next[patternIndex] = {
+        ...next[patternIndex],
+        name: `RND-${Math.floor(100 + Math.random() * 900)}`,
+        genre: 'Random',
+        bpm: nextBpm,
+        swing: nextSwing,
+        cutoff: nextCutoff,
+        resonance: nextResonance,
+        decay: nextDecay,
+        bassOctave: nextOctave,
+        drums: newDrums,
+        bass: newBass,
+      };
+      return next;
+    });
+
+    // 5. Application immédiate aux états et au moteur audio
+    setBpm(nextBpm);
+    setSwing(nextSwing);
+    setCutoff(nextCutoff);
+    setResonance(nextResonance);
+    setDecay(nextDecay);
+    setBassOctave(nextOctave);
+    setBank('B');
+    setLastTriggeredLabel('RANDOMIZED');
+
+    stateRef.current = {
+      ...stateRef.current,
+      bpm: nextBpm,
+      swing: nextSwing,
+      bassOctave: nextOctave,
+    };
+
+    audioEngine.setParams({
+      cutoff: nextCutoff,
+      resonance: nextResonance,
+      decay: nextDecay,
+    });
+  };
+
+    const handleRandomizeDrums = () => {
+    if (!audioUnlocked) handleUnlockAudio();
+
+    const randBool = (prob) => (Math.random() < prob ? 1 : 0);
+
+    const newDrums = {
+      kick: Array.from({ length: 16 }, (_, i) =>
+        i === 0 ? 1 : i % 4 === 0 ? randBool(0.65) : randBool(0.2)
+      ),
+      snare: Array.from({ length: 16 }, (_, i) =>
+        i === 4 || i === 12 ? 1 : randBool(0.12)
+      ),
+      clap: Array.from({ length: 16 }, (_, i) =>
+        (i === 4 || i === 12) && Math.random() < 0.45 ? 1 : randBool(0.08)
+      ),
+      rim: Array.from({ length: 16 }, (_, i) =>
+        i % 2 === 1 ? randBool(0.22) : randBool(0.08)
+      ),
+      chh: Array.from({ length: 16 }, (_, i) =>
+        i % 2 === 0 ? randBool(0.85) : randBool(0.45)
+      ),
+      ohh: Array.from({ length: 16 }, (_, i) =>
+        i % 4 === 2 ? randBool(0.4) : randBool(0.08)
+      ),
+      tomLow: Array.from({ length: 16 }, (_, i) =>
+        i >= 12 ? randBool(0.25) : randBool(0.05)
+      ),
+      perc: Array.from({ length: 16 }, () => randBool(0.15)),
+    };
+
+    setPatterns((prev) => {
+      const next = [...prev];
+      next[patternIndex] = {
+        ...next[patternIndex],
+        drums: newDrums,
+      };
+      return next;
+    });
+
+    setBank('B');
+    setLastTriggeredLabel('RND DRUMS');
+  };
+
+  // Génère uniquement une ligne de basse aléatoire
+  const handleRandomizeBass = () => {
+    if (!audioUnlocked) handleUnlockAudio();
+
+    const scaleNotes = ['C2', 'D#2', 'F2', 'G2', 'A#2', 'C3'];
+    const newBass = Array.from({ length: 16 }, (_, i) => {
+      const prob = i % 4 === 0 ? 0.75 : 0.3;
+      if (Math.random() < prob) {
+        return scaleNotes[Math.floor(Math.random() * scaleNotes.length)];
+      }
+      return null;
+    });
+
+    const nextOctave = [-1, 0, 0, 1][Math.floor(Math.random() * 4)];
+
+    setPatterns((prev) => {
+      const next = [...prev];
+      next[patternIndex] = {
+        ...next[patternIndex],
+        bassOctave: nextOctave,
+        bass: newBass,
+      };
+      return next;
+    });
+
+    setBassOctave(nextOctave);
+    setBank('B');
+    setLastTriggeredLabel('RND BASS');
+
+    stateRef.current = {
+      ...stateRef.current,
+      bassOctave: nextOctave,
+    };
   };
 
   // Trigger a Pad (Drum or Bass depending on activeTrack)
@@ -861,6 +1108,81 @@ const handleImportPreset = async (e) => {
   }
 };
 
+// Sauvegarder le pattern actif dans le localStorage
+  const handleSaveToStore = () => {
+    const activePattern = {
+      ...patterns[patternIndex],
+      bpm,
+      swing,
+      cutoff,
+      resonance,
+      decay,
+      bassOctave,
+    };
+    const nameToUse =
+      customPresetName.trim() || `${activePattern.name} (${bpm}bpm)`;
+    const updated = saveUserPresetToStorage(activePattern, nameToUse);
+    setUserPresets(updated);
+    setSelectedUserPresetUid(updated[0]?.uid || '');
+    setCustomPresetName('');
+    setLastTriggeredLabel('SAVED STORE');
+  };
+
+  // Charger un preset depuis le Store personnel dans le slot actif
+  const handleLoadFromStore = (uid) => {
+    setSelectedUserPresetUid(uid);
+    const found = userPresets.find((p) => p.uid === uid);
+    if (!found) return;
+
+    const normalized = normalizePreset(found, patternIndex);
+    setPatterns((prev) => {
+      const next = [...prev];
+      next[patternIndex] = normalized;
+      return next;
+    });
+
+    const nextBpm = fixTempo ? bpm : normalized.bpm;
+    const nextSwing = fixGroove ? swing : normalized.swing;
+
+    setBpm(nextBpm);
+    setSwing(nextSwing);
+    setCutoff(normalized.cutoff);
+    setResonance(normalized.resonance);
+    setDecay(normalized.decay);
+    setBassOctave(normalized.bassOctave);
+    setBank('B');
+    setLastTriggeredLabel('STORE LOAD');
+
+    stateRef.current = {
+      ...stateRef.current,
+      bpm: nextBpm,
+      swing: nextSwing,
+      bassOctave: normalized.bassOctave,
+    };
+
+    audioEngine.setParams({
+      cutoff: normalized.cutoff,
+      resonance: normalized.resonance,
+      decay: normalized.decay,
+    });
+  };
+
+  // Supprimer le preset sélectionné du Store personnel
+  const handleDeleteFromStore = () => {
+    if (!selectedUserPresetUid) return;
+    const updated = deleteUserPresetFromStorage(selectedUserPresetUid);
+    setUserPresets(updated);
+    setSelectedUserPresetUid(updated[0]?.uid || '');
+    setLastTriggeredLabel('DELETED');
+  };
+
+  // Télécharger le preset sélectionné du Store personnel en .json
+  const handleDownloadStoreItem = () => {
+    const found = userPresets.find((p) => p.uid === selectedUserPresetUid);
+    if (!found) return;
+    const safeName = found.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    exportPresetToFile(found, `dr202-${safeName}.json`);
+  };
   // --- SEQUENCER ENGINE LOOP ---
   useEffect(() => {
     if (!isPlaying) {
@@ -903,9 +1225,7 @@ const handleImportPreset = async (e) => {
         }
       }
 
-      // Calculate next step interval with DR-202 Groove/Swing!
       const sixteenthMs = (60 / st.bpm / 4) * 1000;
-      // Swing shifts even-indexed 16th steps (0, 2, 4...) vs odd steps (1, 3, 5...)
       const swingFactor = (st.swing - 50) / 50; // -0.5 to +0.5
       const delay =
         step % 2 === 0
@@ -1103,16 +1423,18 @@ const handleImportPreset = async (e) => {
             UPPER CONTROL DECK: 3 REAL-TIME KNOBS + AMBER BACKLIT LCD + NAV
            ===================================================================== */}
         <div className="relative grid grid-cols-1 gap-3 lg:grid-cols-12 lg:gap-4 mb-4 sm:mb-5 items-center">
-          {/* LEFT: 3 REALTIME MODIFY KNOBS (Cutoff, Resonance, Decay) */}
+          {/* LEFT: 5 REALTIME MODIFY KNOBS (Cutoff, Resonance, Decay, Drum Pan, Bass Pan) */}
           <div className="lg:col-span-4 bg-zinc-400/40 rounded-2xl p-2.5 sm:p-3 border border-zinc-500/40 shadow-inner">
             <div className="flex items-center justify-between mb-2 px-1">
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-800 flex items-center gap-1">
                 <Sliders className="w-3 h-3 text-orange-700" />
                 Realtime Modify
               </span>
-              <span className="text-[9px] font-bold text-zinc-600">DRUM / BASS</span>
+              <span className="text-[9px] font-bold text-zinc-600">FX &amp; PAN</span>
             </div>
-            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+            
+            {/* Grille de 5 boutons rotatifs */}
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 sm:gap-1.5">
               <RotaryKnob
                 label="CUTOFF"
                 subLabel="LPF"
@@ -1121,7 +1443,7 @@ const handleImportPreset = async (e) => {
                 accentColor="#f97316"
               />
               <RotaryKnob
-                label="RESONANCE"
+                label="RESON"
                 subLabel="Q"
                 value={resonance}
                 onChange={setResonance}
@@ -1133,6 +1455,20 @@ const handleImportPreset = async (e) => {
                 value={decay}
                 onChange={setDecay}
                 accentColor="#eab308"
+              />
+              <RotaryKnob
+                label="DRM PAN"
+                subLabel="L/R"
+                value={drumPan}
+                onChange={setDrumPan}
+                accentColor="#f63bbb"
+              />
+              <RotaryKnob
+                label="BAS PAN"
+                subLabel="L/R"
+                value={bassPan}
+                onChange={setBassPan}
+                accentColor="#ff006a"
               />
             </div>
           </div>
@@ -1260,14 +1596,22 @@ const handleImportPreset = async (e) => {
                 </span>
                 <div className="flex items-center justify-between mt-0.5">
                   <button
-                    onClick={() => setBpm((b) => Math.max(60, b - 2))}
+                    onClick={() => {
+                      const nextBpm = Math.max(60, bpm - 2);
+                      setBpm(nextBpm);
+                      updateCurrentPatternTempoOrSwing(nextBpm, swing);
+                    }}
                     className="w-6 h-6 bg-zinc-800 text-white rounded text-xs font-bold hover:bg-zinc-700 cursor-pointer"
                   >
                     -
                   </button>
                   <span className="font-mono font-black text-xs">{bpm}</span>
                   <button
-                    onClick={() => setBpm((b) => Math.min(180, b + 2))}
+                    onClick={() => {
+                      const nextBpm = Math.min(180, bpm + 2);
+                      setBpm(nextBpm);
+                      updateCurrentPatternTempoOrSwing(nextBpm, swing);
+                    }}
                     className="w-6 h-6 bg-zinc-800 text-white rounded text-xs font-bold hover:bg-zinc-700 cursor-pointer"
                   >
                     +
@@ -1281,14 +1625,22 @@ const handleImportPreset = async (e) => {
                 </span>
                 <div className="flex items-center justify-between mt-0.5">
                   <button
-                    onClick={() => setSwing((s) => Math.max(50, s - 2))}
+                    onClick={() => {
+                      const nextSwing = Math.max(50, swing - 2);
+                      setSwing(nextSwing);
+                      updateCurrentPatternTempoOrSwing(bpm, nextSwing);
+                    }}
                     className="w-6 h-6 bg-zinc-800 text-white rounded text-xs font-bold hover:bg-zinc-700 cursor-pointer"
                   >
                     -
                   </button>
                   <span className="font-mono font-black text-xs">{swing}%</span>
                   <button
-                    onClick={() => setSwing((s) => Math.min(75, s + 2))}
+                    onClick={() => {
+                      const nextSwing = Math.min(75, swing + 2);
+                      setSwing(nextSwing);
+                      updateCurrentPatternTempoOrSwing(bpm, nextSwing);
+                    }}
                     className="w-6 h-6 bg-zinc-800 text-white rounded text-xs font-bold hover:bg-zinc-700 cursor-pointer"
                   >
                     +
@@ -1509,7 +1861,7 @@ const handleImportPreset = async (e) => {
            ===================================================================== */}
         <div className="relative grid grid-cols-1 gap-3 lg:grid-cols-12 lg:gap-4 items-stretch">
           {/* TRANSPORT SECTION (Left 4 cols) */}
-          <div className="lg:col-span-4 bg-zinc-400/50 rounded-2xl p-2.5 sm:p-3.5 border border-zinc-500/40 shadow-inner flex flex-col justify-between gap-3">
+          <div className="lg:col-span-12 bg-zinc-400/50 rounded-2xl p-2.5 sm:p-3.5 border border-zinc-500/40 shadow-inner flex flex-col justify-between gap-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-800">
                 Transport &amp; Sync
@@ -1572,24 +1924,43 @@ const handleImportPreset = async (e) => {
             </div>
 
             {/* Preset Quick-Load Pills */}
-            {/* Preset Import / Export Controls */}
+            {/* Preset Import / Export & Randomizer Controls */}
             <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleRandomizePreset}
+                title="Générer un pattern complet aléatoire"
+                className="px-2 py-1 text-[10px] font-black tracking-wider uppercase bg-purple-700 hover:bg-purple-600 text-white border border-zinc-900 rounded shadow active:translate-y-0.5 flex items-center gap-1 cursor-pointer"
+              >
+                <Shuffle className="w-3 h-3" /> RANDOMIZER
+              </button>
+              <button
+                onClick={handleRandomizeDrums}
+                title="Générer uniquement la batterie aléatoire"
+                className="px-2 py-1 text-[10px] font-black tracking-wider uppercase bg-amber-600 hover:bg-amber-500 text-zinc-950 border border-zinc-900 rounded shadow active:translate-y-0.5 flex items-center gap-1 cursor-pointer"
+              >
+                <Shuffle className="w-3 h-3" /> RND DRUM
+              </button>
+              <button
+                onClick={handleRandomizeBass}
+                title="Générer uniquement la basse aléatoire"
+                className="px-2 py-1 text-[10px] font-black tracking-wider uppercase bg-orange-600 hover:bg-orange-500 text-zinc-950 border border-zinc-900 rounded shadow active:translate-y-0.5 flex items-center gap-1 cursor-pointer"
+              >
+                <Shuffle className="w-3 h-3" /> RND BASS
+              </button>
               <button
                 onClick={handleExportPreset}
                 title="Export Current Pattern (.json)"
-                className="px-2 py-1 text-[10px] font-bold tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-amber-400 border border-zinc-900 rounded shadow active:translate-y-0.5"
+                className="px-2 py-1 text-[10px] font-bold tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-amber-400 border border-zinc-900 rounded shadow active:translate-y-0.5 cursor-pointer"
               >
                 SAVE JSON
               </button>
-
               <button
                 onClick={() => fileInputRef.current?.click()}
                 title="Load Pattern from File (.json)"
-                className="px-2 py-1 text-[10px] font-bold tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-emerald-400 border border-zinc-900 rounded shadow active:translate-y-0.5"
+                className="px-2 py-1 text-[10px] font-bold tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-emerald-400 border border-zinc-900 rounded shadow active:translate-y-0.5 cursor-pointer"
               >
                 LOAD JSON
               </button>
-
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1597,6 +1968,84 @@ const handleImportPreset = async (e) => {
                 onChange={handleImportPreset}
                 className="hidden"
               />
+              
+            </div>
+            {/* --- STORE PERSONNEL (LOCALSTORAGE) --- */}
+            <div className="bg-zinc-900/90 border border-zinc-700 rounded-lg p-2 flex flex-col gap-1.5 mt-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-400">
+                  My Preset Store ({userPresets.length})
+                </span>
+                {userPresets.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={exportAllUserPresetsToFile}
+                    title="Télécharger toute la bibliothèque personnelle (.json)"
+                    className="text-[9px] font-bold text-emerald-400 hover:underline cursor-pointer"
+                  >
+                    EXPORT ALL (.JSON)
+                  </button>
+                )}
+              </div>
+
+              {/* Ligne 1 : Nommer + Sauvegarder dans le navigateur */}
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={customPresetName}
+                  onChange={(e) => setCustomPresetName(e.target.value)}
+                  placeholder="Nom du preset..."
+                  className="flex-1 min-w-0 bg-zinc-950 text-zinc-200 text-[10px] px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-amber-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveToStore}
+                  title="Sauvegarder le pattern actif dans le navigateur"
+                  className="px-2 py-1 text-[10px] font-black uppercase bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded shadow active:translate-y-0.5 cursor-pointer whitespace-nowrap"
+                >
+                  + STORE
+                </button>
+              </div>
+
+              {/* Ligne 2 : Sélecteur des presets sauvegardés + Télécharger / Supprimer */}
+              <div className="flex items-center gap-1">
+                <select
+                  value={selectedUserPresetUid}
+                  onChange={(e) => handleLoadFromStore(e.target.value)}
+                  className="flex-1 min-w-0 bg-zinc-950 text-zinc-200 text-[10px] px-1.5 py-1 rounded border border-zinc-700 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">
+                    {userPresets.length === 0
+                      ? '-- Aucun preset sauvegardé --'
+                      : '-- Charger un preset sauvé --'}
+                  </option>
+                  {userPresets.map((up) => (
+                    <option key={up.uid} value={up.uid}>
+                      {up.name} ({up.bpm} BPM)
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  disabled={!selectedUserPresetUid}
+                  onClick={handleDownloadStoreItem}
+                  title="Télécharger ce preset (.json)"
+                  className="px-2 py-1 text-[10px] font-bold uppercase bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-emerald-400 rounded border border-zinc-800 cursor-pointer"
+                >
+                  DL
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!selectedUserPresetUid}
+                  onClick={handleDeleteFromStore}
+                  title="Supprimer ce preset du navigateur"
+                  className="px-2 py-1 text-[10px] font-bold uppercase bg-zinc-700 hover:bg-red-700 disabled:opacity-40 text-red-400 hover:text-white rounded border border-zinc-800 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             {/* --- 8 QUICK-ACCESS PRESET BANK BUTTONS --- */}
             <div className="bg-zinc-900 p-3 rounded-lg border border-zinc-700 shadow-inner my-3">
@@ -1609,7 +2058,31 @@ const handleImportPreset = async (e) => {
                   Active: {patterns[patternIndex]?.name || `Pattern ${patternIndex + 1}`}
                 </span>
               </div>
+                <div className="flex items-center gap-2 my-2">
+                  <button
+                    type="button"
+                    onClick={() => setFixTempo((v) => !v)}
+                    className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border cursor-pointer ${
+                      fixTempo
+                        ? 'bg-amber-500 text-zinc-950 border-amber-300'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-600'
+                    }`}
+                  >
+                    FIX TEMPO: {fixTempo ? 'ON' : 'OFF'}
+                  </button>
 
+                  <button
+                    type="button"
+                    onClick={() => setFixGroove((v) => !v)}
+                    className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border cursor-pointer ${
+                      fixGroove
+                        ? 'bg-amber-500 text-zinc-950 border-amber-300'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-600'
+                    }`}
+                  >
+                    FIX GROOVE: {fixGroove ? 'ON' : 'OFF'}
+                  </button>
+                </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {bankSlots.map((presetIdx, slotNum) => {
                   const assignedPattern = patterns[presetIdx];
@@ -1686,7 +2159,7 @@ const handleImportPreset = async (e) => {
           </div>
 
           {/* 13 RUBBERIZED CHROMATIC TRIGGER PADS (Right 8 cols) */}
-          <div className="lg:col-span-8 bg-zinc-900 rounded-2xl p-2.5 sm:p-3.5 lg:p-4 shadow-[inset_0_3px_10px_rgba(0,0,0,0.9)] border-2 border-zinc-700 flex flex-col justify-between">
+          <div className="lg:col-span-12 bg-zinc-900 rounded-2xl p-2.5 sm:p-3.5 lg:p-4 shadow-[inset_0_3px_10px_rgba(0,0,0,0.9)] border-2 border-zinc-700 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
                 <Radio className="w-3.5 h-3.5 text-amber-500" />
