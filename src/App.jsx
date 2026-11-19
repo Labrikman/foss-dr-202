@@ -17,12 +17,17 @@ import {
 } from 'lucide-react';
 
 import { 
-  exportPresetToFile,
+exportPresetToFile,
   importPresetFromFile,
   getSavedUserPresets,
   saveUserPresetToStorage,
   deleteUserPresetFromStorage,
-  exportAllUserPresetsToFile, 
+  exportAllUserPresetsToFile,
+  getSavedUserBanks,
+  saveUserBankToStorage,
+  deleteUserBankFromStorage,
+  exportBankToFile,
+  importBankFromFile,
 } from './presetManager';
 import { DR202_100_PRESETS } from './presets/presetsBank';
 
@@ -691,6 +696,11 @@ export default function App() {
   // Tracks which slot currently has its configuration menu open (null if closed)
   const [configuringSlotIndex, setConfiguringSlotIndex] = useState(null);
   
+  // Store for 8 Bank Slots
+  const [userBanks, setUserBanks] = useState(() => getSavedUserBanks());
+  const [selectedUserBankUid, setSelectedUserBankUid] = useState('');
+  const [customBankName, setCustomBankName] = useState('');
+  const bankFileInputRef = useRef(null);
 
   // StorelocalStorage
   const [userPresets, setUserPresets] = useState(() => getSavedUserPresets());
@@ -1016,7 +1026,67 @@ export default function App() {
       bassOctave: nextOctave,
     };
   };
+// Sauvegarder la configuration actuelle des 8 slots dans le localStorage
+  const handleSaveBankToStore = () => {
+    const nameToUse = customBankName.trim() || `Bank Set #${userBanks.length + 1}`;
+    const updated = saveUserBankToStorage(bankSlots, nameToUse);
+    setUserBanks(updated);
+    setSelectedUserBankUid(updated[0]?.uid || '');
+    setCustomBankName('');
+    setLastTriggeredLabel('BANK SAVED');
+  };
 
+  // Charger une configuration de 8 slots depuis le Store
+  const handleLoadBankFromStore = (uid) => {
+    setSelectedUserBankUid(uid);
+    const found = userBanks.find((b) => b.uid === uid);
+    if (!found || !Array.isArray(found.slots)) return;
+
+    setBankSlots(found.slots);
+    // Active automatiquement le 1er slot de la banque chargée
+    if (typeof found.slots[0] === 'number') {
+      selectPattern(found.slots[0]);
+    }
+    setLastTriggeredLabel('BANK LOADED');
+  };
+
+  // Supprimer la banque sélectionnée
+  const handleDeleteBankFromStore = () => {
+    if (!selectedUserBankUid) return;
+    const updated = deleteUserBankFromStorage(selectedUserBankUid);
+    setUserBanks(updated);
+    setSelectedUserBankUid(updated[0]?.uid || '');
+    setLastTriggeredLabel('BANK DEL');
+  };
+
+  // donwload the configuration of 8 slots in .json
+  const handleDownloadBank = () => {
+    const found = userBanks.find((b) => b.uid === selectedUserBankUid);
+    const payload = found || { name: 'Custom Bank', slots: bankSlots };
+    const safeName = payload.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    exportBankToFile(payload, `dr202-bank-${safeName}.json`);
+  };
+
+  // Import .json Bank Slots
+  const handleImportBank = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const imported = await importBankFromFile(file);
+      const updated = saveUserBankToStorage(imported.slots, imported.name);
+      setUserBanks(updated);
+      setSelectedUserBankUid(updated[0]?.uid || '');
+      setBankSlots(imported.slots);
+      if (typeof imported.slots[0] === 'number') {
+        selectPattern(imported.slots[0]);
+      }
+      setLastTriggeredLabel('BANK IMP');
+    } catch (err) {
+      alert(`Erreur d'import Bank : ${err.message}`);
+    } finally {
+      e.target.value = '';
+    }
+  };
   // Trigger a Pad (Drum or Bass depending on activeTrack)
   const triggerPad = useCallback(
     (pad) => {
@@ -2154,6 +2224,88 @@ const handleImportPreset = async (e) => {
                     </div>
                   );
                 })}
+              </div>
+              {/* --- STORE PERSONNEL DES 8 BANK SLOTS --- */}
+              <div className="bg-zinc-900/90 border border-zinc-700 rounded-lg p-2 flex flex-col gap-1.5 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-orange-400">
+                    Bank Slots Store ({userBanks.length})
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadBank}
+                      title="Exporter la configuration actuelle des 8 slots (.json)"
+                      className="text-[9px] font-bold text-amber-400 hover:underline cursor-pointer"
+                    >
+                      EXPORT BANK
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => bankFileInputRef.current?.click()}
+                      title="Importer une configuration de 8 slots (.json)"
+                      className="text-[9px] font-bold text-emerald-400 hover:underline cursor-pointer"
+                    >
+                      IMPORT BANK
+                    </button>
+                    <input
+                      ref={bankFileInputRef}
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={handleImportBank}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Ligne 1 : Nommer + Sauvegarder les 8 slots */}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={customBankName}
+                    onChange={(e) => setCustomBankName(e.target.value)}
+                    placeholder="Nom du set de 8 slots..."
+                    className="flex-1 min-w-0 bg-zinc-950 text-zinc-200 text-[10px] px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-orange-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveBankToStore}
+                    title="Sauvegarder l'assignation des 8 slots dans le navigateur"
+                    className="px-2 py-1 text-[10px] font-black uppercase bg-orange-500 hover:bg-orange-400 text-zinc-950 rounded shadow active:translate-y-0.5 cursor-pointer whitespace-nowrap"
+                  >
+                    + BANK
+                  </button>
+                </div>
+
+                {/* Ligne 2 : Charger / Supprimer un set sauvegardé */}
+                <div className="flex items-center gap-1">
+                  <select
+                    value={selectedUserBankUid}
+                    onChange={(e) => handleLoadBankFromStore(e.target.value)}
+                    className="flex-1 min-w-0 bg-zinc-950 text-zinc-200 text-[10px] px-1.5 py-1 rounded border border-zinc-700 focus:outline-none focus:border-orange-500"
+                  >
+                    <option value="">
+                      {userBanks.length === 0
+                        ? '-- Aucune bank sauvegardée --'
+                        : '-- Charger un set de 8 slots --'}
+                    </option>
+                    {userBanks.map((ub) => (
+                      <option key={ub.uid} value={ub.uid}>
+                        {ub.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    disabled={!selectedUserBankUid}
+                    onClick={handleDeleteBankFromStore}
+                    title="Supprimer cette bank du navigateur"
+                    className="px-2 py-1 text-[10px] font-bold uppercase bg-zinc-700 hover:bg-red-700 disabled:opacity-40 text-red-400 hover:text-white rounded border border-zinc-800 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             </div>
           </div>

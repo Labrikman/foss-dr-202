@@ -1,11 +1,9 @@
-// src/presetManager.js
-
 /**
  * Triggers a browser download of a single pattern or all user patterns as a .json file.
  */
 export function exportPresetToFile(patternData, filename = 'dr202-preset.json') {
   const payload = {
-    device: 'BOSS DR-202 Dr. Groove Emulator',
+    device: 'FOSS DR-202 Dr. Groove Emulator',
     version: '1.0',
     exportedAt: new Date().toISOString(),
     data: patternData,
@@ -62,25 +60,24 @@ export function importPresetFromFile(file) {
   });
 }
 
-// src/presetManager.js (à ajouter à la suite de vos fonctions existantes)
 
 const STORAGE_KEY = 'dr202_user_presets_v1';
 
 /**
- * Récupère la liste des presets sauvegardés dans le localStorage.
+ * Retrieves the list of user presets saved in localStorage.
  */
 export function getSavedUserPresets() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
-    console.error('Erreur de lecture localStorage:', e);
+    console.error('Error reading user presets from localStorage:', e);
     return [];
   }
 }
 
 /**
- * Sauvegarde un preset dans le localStorage (ajoute ou met à jour par ID/nom).
+ * Saves a user preset to the localStorage (adds or updates by ID/name).
  */
 export function saveUserPresetToStorage(patternData, customName) {
   const existing = getSavedUserPresets();
@@ -97,7 +94,7 @@ export function saveUserPresetToStorage(patternData, customName) {
 }
 
 /**
- * Supprime un preset personnel du localStorage via son uid.
+ * Deletes a user preset from the localStorage via its uid.
  */
 export function deleteUserPresetFromStorage(uid) {
   const existing = getSavedUserPresets();
@@ -107,9 +104,112 @@ export function deleteUserPresetFromStorage(uid) {
 }
 
 /**
- * Exporte toute la banque personnelle en un seul fichier .json téléchargeable.
+ * Export all user presets to a single downloadable .json file.
  */
 export function exportAllUserPresetsToFile() {
   const all = getSavedUserPresets();
   exportPresetToFile(all, `dr202-my-store-${all.length}-presets.json`);
+}
+
+// src/presetManager.js (à ajouter à la suite)
+
+const BANK_STORAGE_KEY = 'dr202_user_banks_v1';
+
+/**
+ * get list of 8 Bank Slots ssave in localStorage.
+ */
+export function getSavedUserBanks() {
+  try {
+    const raw = localStorage.getItem(BANK_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error('Error reading banks from localStorage:', e);
+    return [];
+  }
+}
+
+/**
+ * Saves Bank Slots to the localStorage.
+ */
+export function saveUserBankToStorage(bankSlotsArray, customName) {
+  const existing = getSavedUserBanks();
+  const entry = {
+    uid: `bank_${Date.now()}`,
+    name: (customName || `Bank Set #${existing.length + 1}`).trim(),
+    slots: [...bankSlotsArray],
+    savedAt: new Date().toISOString(),
+  };
+
+  const updated = [entry, ...existing];
+  localStorage.setItem(BANK_STORAGE_KEY, JSON.stringify(updated));
+  return updated;
+}
+
+/**
+ * Deletes Bank Slots via their uid.
+ */
+export function deleteUserBankFromStorage(uid) {
+  const existing = getSavedUserBanks();
+  const updated = existing.filter((item) => item.uid !== uid);
+  localStorage.setItem(BANK_STORAGE_KEY, JSON.stringify(updated));
+  return updated;
+}
+
+/**
+ * Export a .json of 8 Bank Slots.
+ */
+export function exportBankToFile(bankEntry, filename = 'dr202-bank-slots.json') {
+  const payload = {
+    device: 'FOSS DR-202 Dr. Groove Emulator',
+    type: 'bank_slots',
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    data: bankEntry,
+  };
+
+  const jsonString = JSON.stringify(payload, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Import a .json of 8 Bank Slots.
+ */
+export function importBankFromFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error('No file selected.'));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target.result);
+        const bankData = parsed.data || parsed;
+        const slots = Array.isArray(bankData) ? bankData : bankData.slots;
+
+        if (!Array.isArray(slots) || slots.length !== 8) {
+          throw new Error('Invalid Bank Slots format (8 slots expected).');
+        }
+
+        resolve({
+          name: bankData.name || 'Imported Bank',
+          slots: slots.map((n) => (typeof n === 'number' ? n : 0)),
+        });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error('Error reading the file.'));
+    reader.readAsText(file);
+  });
 }
