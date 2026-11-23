@@ -678,7 +678,7 @@ const RotaryKnob = React.memo(({ label, subLabel, value, onChange, accentColor =
 
         <div
           style={{ transform: `rotate(${rotation}deg)` }}
-          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-950 shadow-[0_4px_8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.25)] border border-zinc-900 flex items-start justify-center pt-1"
+          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-zinc-800 shadow-[0_4px_8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.25)] border border-zinc-900 flex items-start justify-center pt-1"
         >
           <div
             className="w-1 h-3 rounded-full"
@@ -1629,7 +1629,7 @@ const handleImportPreset = async (e) => {
     <div className="min-h-screen bg-zinc-950 text-zinc-900 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 lg:p-8 font-sans select-none overflow-x-hidden">
       {/* Audio Engine Activation Banner (Required by browser Web Audio policy) */}
       {!audioUnlocked && (
-        <div className="w-full max-w-4xl mb-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-zinc-950 px-4 py-3 rounded-xl shadow-[0_0_25px_rgba(245,158,11,0.4)] flex flex-col sm:flex-row items-center justify-between gap-3 border border-amber-300">
+        <div className="w-full max-w-4xl mb-4 bg-amber-500 text-zinc-950 px-4 py-3 rounded-xl shadow-[0_0_25px_rgba(245,158,11,0.4)] flex flex-col sm:flex-row items-center justify-between gap-3 border border-amber-300">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-zinc-950 text-amber-400 rounded-lg animate-pulse">
               <Power className="w-5 h-5" />
@@ -1655,10 +1655,7 @@ const handleImportPreset = async (e) => {
       {/* =====================================================================
           BOSS DR-202 HARDWARE CHASSIS
          ===================================================================== */}
-      <div className="w-full max-w-5xl rounded-[24px] sm:rounded-[30px] p-3 sm:p-5 lg:p-6 bg-gradient-to-b from-[#d2d5da] via-[#b8bcc4] to-[#989da6] shadow-[0_25px_60px_rgba(0,0,0,0.85),inset_0_2px_3px_rgba(255,255,255,0.8),inset_0_-4px_8px_rgba(0,0,0,0.35)] border-2 border-zinc-500 relative overflow-hidden">
-        {/* Subtle metallic grain highlight */}
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.35),transparent_70%)]" />
-
+      <div className="w-full max-w-5xl rounded-[24px] sm:rounded-[30px] p-3 sm:p-5 lg:p-6 bg-[#b8bcc4] shadow-[0_25px_60px_rgba(0,0,0,0.85),inset_0_2px_3px_rgba(255,255,255,0.8),inset_0_-4px_8px_rgba(0,0,0,0.35)] border-2 border-zinc-500 relative overflow-hidden">
         {/* TOP HARDWARE BRANDING & GROOVE STRIP */}
         <div className="relative flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b-2 border-zinc-500/50">
           <div className="flex items-baseline gap-3">
@@ -1752,17 +1749,7 @@ const handleImportPreset = async (e) => {
           <div className="lg:col-span-5">
             <div className="bg-zinc-900 p-2.5 rounded-2xl shadow-[inset_0_3px_10px_rgba(0,0,0,0.9),0_1px_0_rgba(255,255,255,0.5)] border-2 border-zinc-700">
               {/* Amber LCD Glass */}
-              <div className="relative rounded-xl bg-gradient-to-b from-[#ff9e1b] via-[#ff8c00] to-[#e67300] p-3 text-zinc-950 font-mono shadow-[inset_0_0_20px_rgba(120,40,0,0.55)] overflow-hidden">
-                {/* Subtle LCD scanline / pixel grid texture */}
-                <div
-                  className="pointer-events-none absolute inset-0 opacity-15"
-                  style={{
-                    backgroundImage:
-                      'linear-gradient(rgba(0,0,0,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.4) 1px, transparent 1px)',
-                    backgroundSize: '3px 3px',
-                  }}
-                />
-
+              <div className="relative rounded-xl bg-[#ff8c00] p-3 text-zinc-950 font-mono shadow-[inset_0_0_20px_rgba(120,40,0,0.55)] overflow-hidden">
                 {/* LCD Row 1: Pattern ID, Bank, BPM, Groove */}
                 <div className="relative flex items-center justify-between border-b border-zinc-950/25 pb-1.5 mb-1.5">
                   <div className="flex items-center gap-2">
@@ -2647,10 +2634,10 @@ const handleImportPreset = async (e) => {
                     onMouseDown={() => triggerPad(pad)}
                     className={`group relative h-12 sm:h-14 lg:h-16 rounded-xl flex flex-col items-center justify-between p-1.5 sm:p-2 transition-all duration-75 cursor-pointer border-2 ${
                       isLit
-                        ? 'bg-gradient-to-b from-amber-400 to-orange-500 border-amber-200 translate-y-0.5 shadow-[0_0_20px_rgba(245,158,11,0.8)]'
+                        ? 'bg-orange-500 border-amber-200 translate-y-0.5 shadow-[0_0_20px_rgba(245,158,11,0.8)]'
                         : isSelectedBass
-                        ? 'bg-gradient-to-b from-zinc-700 to-zinc-800 border-orange-500 shadow-[0_4px_0_#09090b]'
-                        : 'bg-gradient-to-b from-zinc-700 to-zinc-800 hover:from-zinc-600 hover:to-zinc-700 border-zinc-600 shadow-[0_4px_0_#09090b]'
+                        ? 'bg-zinc-800 border-orange-500 shadow-[0_4px_0_#09090b]'
+                        : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-600 shadow-[0_4px_0_#09090b]'
                     }`}
                   >
                     <div className="w-full flex items-center justify-between">
@@ -2703,10 +2690,10 @@ const handleImportPreset = async (e) => {
                     onMouseDown={() => triggerPad(pad)}
                     className={`group relative h-14 sm:h-16 lg:h-20 rounded-xl flex flex-col items-center justify-between p-1.5 sm:p-2 transition-all duration-75 cursor-pointer border-2 ${
                       isLit
-                        ? 'bg-gradient-to-b from-amber-300 to-orange-500 border-white translate-y-0.5 shadow-[0_0_22px_rgba(251,191,36,0.85)]'
+                        ? 'bg-orange-500 border-white translate-y-0.5 shadow-[0_0_22px_rgba(251,191,36,0.85)]'
                         : isSelectedBass
-                        ? 'bg-gradient-to-b from-zinc-500 to-zinc-600 border-orange-400 shadow-[0_4px_0_#09090b]'
-                        : 'bg-gradient-to-b from-zinc-500 to-zinc-600 hover:from-zinc-400 hover:to-zinc-500 border-zinc-400/60 shadow-[0_4px_0_#09090b]'
+                        ? 'bg-zinc-600 border-orange-400 shadow-[0_4px_0_#09090b]'
+                        : 'bg-zinc-600 hover:bg-zinc-500 border-zinc-400/60 shadow-[0_4px_0_#09090b]'
                     }`}
                   >
                     <div className="w-full flex items-center justify-between">
