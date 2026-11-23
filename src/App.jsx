@@ -68,6 +68,14 @@ const PAD_CONFIG = [
   { id: 12, note: 'C+', fullNote: 'C3', isBlack: false, keyHint: 'K', drumName: 'PERC / FX', drumId: 'perc', color: 'amber' },
 ];
 
+const PAD_BY_DRUM_ID = new Map(
+  PAD_CONFIG.filter((pad) => pad.drumId).map((pad) => [pad.drumId, pad])
+);
+
+const PAD_BY_FULL_NOTE = new Map(
+  PAD_CONFIG.filter((pad) => pad.fullNote).map((pad) => [pad.fullNote, pad])
+);
+
 const DRUM_VOICES = [
   { id: 'kick', label: 'KICK', group: 'KICK' },
   { id: 'snare', label: 'SNARE', group: 'SNARE' },
@@ -545,6 +553,8 @@ const RotaryKnob = React.memo(({ label, subLabel, value, onChange, accentColor =
   const startYRef = useRef(0);
   const startValRef = useRef(value);
   const lastEmittedValRef = useRef(value);
+  const animationFrameRef = useRef(null);
+  const pendingValueRef = useRef(null);
 
   useEffect(() => {
     lastEmittedValRef.current = value;
@@ -573,7 +583,16 @@ const RotaryKnob = React.memo(({ label, subLabel, value, onChange, accentColor =
       const newVal = Math.min(100, Math.max(0, Math.round(startValRef.current + deltaY * 0.65)));
       if (newVal !== lastEmittedValRef.current) {
         lastEmittedValRef.current = newVal;
-        onChange(newVal);
+        pendingValueRef.current = newVal;
+        if (animationFrameRef.current === null) {
+          animationFrameRef.current = requestAnimationFrame(() => {
+            if (pendingValueRef.current !== null) {
+              onChange(pendingValueRef.current);
+              pendingValueRef.current = null;
+            }
+            animationFrameRef.current = null;
+          });
+        }
       }
     };
 
@@ -590,6 +609,14 @@ const RotaryKnob = React.memo(({ label, subLabel, value, onChange, accentColor =
         draggingRef.current = false;
         document.body.style.cursor = '';
       }
+      if (pendingValueRef.current !== null) {
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        onChange(pendingValueRef.current);
+        pendingValueRef.current = null;
+      }
     };
 
     window.addEventListener('mousemove', onMouseMove);
@@ -601,6 +628,10 @@ const RotaryKnob = React.memo(({ label, subLabel, value, onChange, accentColor =
       window.removeEventListener('mouseup', onEnd);
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', onEnd);
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
     };
   }, [onChange]);
 
@@ -744,6 +775,12 @@ export default function App() {
 
   // Tap Tempo tracking
   const tapTimesRef = useRef([]);
+  const padFlashTimersRef = useRef(new Map());
+
+  useEffect(() => () => {
+    padFlashTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    padFlashTimersRef.current.clear();
+  }, []);
 
   // Refs for accurate timing inside setInterval/scheduler
   const stateRef = useRef({
@@ -810,10 +847,15 @@ export default function App() {
 
   // Flash pad LED visually
   const flashPad = useCallback((padId) => {
+    const existingTimer = padFlashTimersRef.current.get(padId);
+    if (existingTimer) clearTimeout(existingTimer);
+
     setActivePads((prev) => ({ ...prev, [padId]: true }));
-    setTimeout(() => {
+    const timerId = setTimeout(() => {
       setActivePads((prev) => ({ ...prev, [padId]: false }));
+      padFlashTimersRef.current.delete(padId);
     }, 130);
+    padFlashTimersRef.current.set(padId, timerId);
   }, []);
 
 // Load a Preset Pattern
@@ -1327,7 +1369,7 @@ const handleImportPreset = async (e) => {
     let step = 0;
     let nextNoteTime = audioEngine.getCurrentTime() + 0.02;
     let timerId = null;
-    let visualTimerId = null;
+    const visualTimerIds = new Set();
 
     const scheduleStep = (stepToPlay, time) => {
       const st = stateRef.current;
@@ -1335,21 +1377,25 @@ const handleImportPreset = async (e) => {
 
       // Synchronisation visuelle légère décalée au moment exact du son
       const msUntilNote = Math.max(0, (time - audioEngine.getCurrentTime()) * 1000);
-      visualTimerId = setTimeout(() => {
+      const visualTimerId = setTimeout(() => {
+        visualTimerIds.delete(visualTimerId);
         if (!stateRef.current.isPlaying) return;
         setCurrentStep(stepToPlay);
       }, msUntilNote);
+      visualTimerIds.add(visualTimerId);
 
       // 1. Drums planifiés à l'instant exact `time`
       DRUM_VOICES.forEach((voice) => {
         if (currentPat.drums[voice.id]?.[stepToPlay] === 1) {
           if (isPartAudible(voice.group)) {
             audioEngine.triggerDrum(voice.id, time);
-            const matchingPad = PAD_CONFIG.find((p) => p.drumId === voice.id);
+            const matchingPad = PAD_BY_DRUM_ID.get(voice.id);
             if (matchingPad && st.activeTrack === 'DRUM') {
-              setTimeout(() => {
+              const padTimerId = setTimeout(() => {
+                visualTimerIds.delete(padTimerId);
                 if (stateRef.current.isPlaying) flashPad(matchingPad.id);
               }, msUntilNote);
+              visualTimerIds.add(padTimerId);
             }
           }
         }
@@ -1359,11 +1405,13 @@ const handleImportPreset = async (e) => {
       const bassNote = currentPat.bass[stepToPlay];
       if (bassNote && isPartAudible('BASS')) {
         audioEngine.triggerBass(bassNote, st.bassOctave, time);
-        const matchingPad = PAD_CONFIG.find((p) => p.fullNote === bassNote);
+        const matchingPad = PAD_BY_FULL_NOTE.get(bassNote);
         if (matchingPad && st.activeTrack === 'BASS') {
-          setTimeout(() => {
+          const padTimerId = setTimeout(() => {
+            visualTimerIds.delete(padTimerId);
             if (stateRef.current.isPlaying) flashPad(matchingPad.id);
           }, msUntilNote);
+          visualTimerIds.add(padTimerId);
         }
       }
     };
@@ -1420,7 +1468,8 @@ const handleImportPreset = async (e) => {
 
     return () => {
       if (timerId) clearTimeout(timerId);
-      if (visualTimerId) clearTimeout(visualTimerId);
+      visualTimerIds.forEach((id) => clearTimeout(id));
+      visualTimerIds.clear();
     };
   }, [isPlaying, flashPad, selectPattern]);
 
