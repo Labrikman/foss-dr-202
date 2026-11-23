@@ -179,6 +179,11 @@ class DR202AudioEngine {
     }
   }
 
+  getCurrentTime() {
+    this.init();
+    return this.ctx.currentTime;
+  }
+
   setParams({ cutoff, resonance, decay, volume, drumPan, bassPan }) {
       if (cutoff !== undefined) this.cutoff = cutoff;
       if (resonance !== undefined) this.resonance = resonance;
@@ -534,17 +539,23 @@ const audioEngine = new DR202AudioEngine();
 
 // --- ROTARY KNOB HARDWARE COMPONENT ---
 
-const RotaryKnob = ({ label, subLabel, value, onChange, accentColor = '#f97316' }) => {
+const RotaryKnob = React.memo(({ label, subLabel, value, onChange, accentColor = '#f97316' }) => {
   const knobRef = useRef(null);
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
   const startValRef = useRef(value);
+  const lastEmittedValRef = useRef(value);
+
+  useEffect(() => {
+    lastEmittedValRef.current = value;
+  }, [value]);
 
   const handleMouseDown = (e) => {
     e.preventDefault();
     draggingRef.current = true;
     startYRef.current = e.clientY;
     startValRef.current = value;
+    lastEmittedValRef.current = value;
     document.body.style.cursor = 'ns-resize';
   };
 
@@ -552,6 +563,7 @@ const RotaryKnob = ({ label, subLabel, value, onChange, accentColor = '#f97316' 
     draggingRef.current = true;
     startYRef.current = e.touches[0].clientY;
     startValRef.current = value;
+    lastEmittedValRef.current = value;
   };
 
   useEffect(() => {
@@ -559,7 +571,10 @@ const RotaryKnob = ({ label, subLabel, value, onChange, accentColor = '#f97316' 
       if (!draggingRef.current) return;
       const deltaY = startYRef.current - clientY;
       const newVal = Math.min(100, Math.max(0, Math.round(startValRef.current + deltaY * 0.65)));
-      onChange(newVal);
+      if (newVal !== lastEmittedValRef.current) {
+        lastEmittedValRef.current = newVal;
+        onChange(newVal);
+      }
     };
 
     const onMouseMove = (e) => handleMove(e.clientY);
@@ -589,7 +604,6 @@ const RotaryKnob = ({ label, subLabel, value, onChange, accentColor = '#f97316' 
     };
   }, [onChange]);
 
-  // Rotation angle from -135 deg (0) to +135 deg (100)
   const rotation = -135 + (value / 100) * 270;
 
   return (
@@ -598,7 +612,6 @@ const RotaryKnob = ({ label, subLabel, value, onChange, accentColor = '#f97316' 
         {label}
       </div>
 
-      {/* Knob outer housing & dial ticks */}
       <div
         ref={knobRef}
         onMouseDown={handleMouseDown}
@@ -607,7 +620,6 @@ const RotaryKnob = ({ label, subLabel, value, onChange, accentColor = '#f97316' 
         title="Drag up/down to adjust (Double-click to center)"
         className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center cursor-ns-resize touch-none"
       >
-        {/* Outer tick ring */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 64 64">
           {Array.from({ length: 11 }).map((_, idx) => {
             const angle = (-135 + idx * 27) * (Math.PI / 180);
@@ -633,12 +645,10 @@ const RotaryKnob = ({ label, subLabel, value, onChange, accentColor = '#f97316' 
           })}
         </svg>
 
-        {/* Tactile 90s charcoal rubberized knob cap */}
         <div
           style={{ transform: `rotate(${rotation}deg)` }}
-          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-950 shadow-[0_4px_8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.25)] border border-zinc-900 flex items-start justify-center pt-1 transition-transform duration-75"
+          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-950 shadow-[0_4px_8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.25)] border border-zinc-900 flex items-start justify-center pt-1"
         >
-          {/* Indicator notch */}
           <div
             className="w-1 h-3 rounded-full"
             style={{ backgroundColor: accentColor, boxShadow: `0 0 4px ${accentColor}` }}
@@ -654,7 +664,7 @@ const RotaryKnob = ({ label, subLabel, value, onChange, accentColor = '#f97316' 
       </div>
     </div>
   );
-};
+});
 
 // --- MAIN APPLICATION COMPONENT ---
 
@@ -701,6 +711,17 @@ export default function App() {
   const [selectedUserBankUid, setSelectedUserBankUid] = useState('');
   const [customBankName, setCustomBankName] = useState('');
   const bankFileInputRef = useRef(null);
+
+  // --- MODE CHAÎNE / SONG (Programmation des Bank Slots) ---
+  const [isSongMode, setIsSongMode] = useState(false);
+  // Liste d'étapes : { id, slotIndex (0..7), repeats (nombre de boucles de 16 pas) }
+  const [songChain, setSongChain] = useState([
+    { id: 'c1', slotIndex: 0, repeats: 2 },
+    { id: 'c2', slotIndex: 1, repeats: 2 },
+    { id: 'c3', slotIndex: 2, repeats: 4 },
+  ]);
+  const [currentChainStep, setCurrentChainStep] = useState(0);
+  const [currentRepeatCount, setCurrentRepeatCount] = useState(0);
 
   // StorelocalStorage
   const [userPresets, setUserPresets] = useState(() => getSavedUserPresets());
@@ -752,6 +773,7 @@ export default function App() {
       bassOctave,
       activeTrack,
       currentStep,
+      isSongMode, songChain, currentChainStep, currentRepeatCount, bankSlots
     };
   }, [
     isPlaying,
@@ -765,6 +787,7 @@ export default function App() {
     bassOctave,
     activeTrack,
     currentStep,
+    isSongMode, songChain, currentChainStep, currentRepeatCount, bankSlots
   ]);
 
   // Sync knob changes with Web Audio Engine
@@ -827,17 +850,56 @@ export default function App() {
     [patterns, fixTempo, fixGroove]
   );
 
-  const updateCurrentPatternTempoOrSwing = (nextBpm, nextSwing) => {
-      setPatterns((prev) => {
-        const next = [...prev];
-        next[patternIndex] = {
-          ...next[patternIndex],
+  const updateCurrentPatternTempoOrSwing = useCallback(
+      (nextBpm, nextSwing) => {
+        stateRef.current = {
+          ...stateRef.current,
           bpm: nextBpm,
           swing: nextSwing,
         };
-        return next;
-      });
-    };
+
+        setPatterns((prev) => {
+          const next = [...prev];
+          next[patternIndex] = {
+            ...next[patternIndex],
+            bpm: nextBpm,
+            swing: nextSwing,
+          };
+          return next;
+        });
+      },
+      [patternIndex]
+    );
+  const addChainStep = () => {
+    setSongChain((prev) => [
+      ...prev,
+      { id: `c_${Date.now()}`, slotIndex: 0, repeats: 2 },
+    ]);
+  };
+
+  const updateChainStep = (index, field, value) => {
+    setSongChain((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const removeChainStep = (index) => {
+    setSongChain((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Démarre la lecture depuis le premier bloc de la chaîne
+  const startSongFromBeginning = () => {
+    if (songChain.length === 0) return;
+    setCurrentChainStep(0);
+    setCurrentRepeatCount(0);
+    const firstSlot = songChain[0].slotIndex;
+    const presetIdx = bankSlots[firstSlot] ?? 0;
+    selectPattern(presetIdx);
+    stateRef.current.currentChainStep = 0;
+    stateRef.current.currentRepeatCount = 0;
+  };
 
     // Reset current pattern back to factory preset
   const handleResetPattern = () => {
@@ -1254,6 +1316,7 @@ const handleImportPreset = async (e) => {
     exportPresetToFile(found, `dr202-${safeName}.json`);
   };
   // --- SEQUENCER ENGINE LOOP ---
+// --- SEQUENCER ENGINE LOOP (LOOKAHEAD + AUDIO CLOCK) ---
   useEffect(() => {
     if (!isPlaying) {
       setCurrentStep(-1);
@@ -1262,56 +1325,104 @@ const handleImportPreset = async (e) => {
 
     audioEngine.init();
     let step = 0;
+    let nextNoteTime = audioEngine.getCurrentTime() + 0.02;
     let timerId = null;
+    let visualTimerId = null;
 
-    const tick = () => {
+    const scheduleStep = (stepToPlay, time) => {
       const st = stateRef.current;
-      if (!st.isPlaying) return;
-
-      setCurrentStep(step);
       const currentPat = st.patterns[st.patternIndex];
 
-      // 1. Play Drum Voices for this step
+      // Synchronisation visuelle légère décalée au moment exact du son
+      const msUntilNote = Math.max(0, (time - audioEngine.getCurrentTime()) * 1000);
+      visualTimerId = setTimeout(() => {
+        if (!stateRef.current.isPlaying) return;
+        setCurrentStep(stepToPlay);
+      }, msUntilNote);
+
+      // 1. Drums planifiés à l'instant exact `time`
       DRUM_VOICES.forEach((voice) => {
-        if (currentPat.drums[voice.id]?.[step] === 1) {
+        if (currentPat.drums[voice.id]?.[stepToPlay] === 1) {
           if (isPartAudible(voice.group)) {
-            audioEngine.triggerDrum(voice.id);
-            // Light up matching pad
+            audioEngine.triggerDrum(voice.id, time);
             const matchingPad = PAD_CONFIG.find((p) => p.drumId === voice.id);
             if (matchingPad && st.activeTrack === 'DRUM') {
-              flashPad(matchingPad.id);
+              setTimeout(() => {
+                if (stateRef.current.isPlaying) flashPad(matchingPad.id);
+              }, msUntilNote);
             }
           }
         }
       });
 
-      // 2. Play Bass Note for this step
-      const bassNote = currentPat.bass[step];
+      // 2. Bass planifiée à l'instant exact `time`
+      const bassNote = currentPat.bass[stepToPlay];
       if (bassNote && isPartAudible('BASS')) {
-        audioEngine.triggerBass(bassNote, st.bassOctave);
+        audioEngine.triggerBass(bassNote, st.bassOctave, time);
         const matchingPad = PAD_CONFIG.find((p) => p.fullNote === bassNote);
         if (matchingPad && st.activeTrack === 'BASS') {
-          flashPad(matchingPad.id);
+          setTimeout(() => {
+            if (stateRef.current.isPlaying) flashPad(matchingPad.id);
+          }, msUntilNote);
+        }
+      }
+    };
+
+    const getStepDurationSec = (stepIndex, bpmVal, swingVal) => {
+      const sixteenthSec = 60 / bpmVal / 4;
+      const swingFactor = (swingVal - 50) / 50; // -0.5 to +0.5
+      return stepIndex % 2 === 0
+        ? sixteenthSec * (1 + swingFactor * 0.45)
+        : sixteenthSec * (1 - swingFactor * 0.45);
+    };
+
+    const scheduler = () => {
+      const st = stateRef.current;
+      if (!st.isPlaying) return;
+
+      const lookaheadSec = 0.08; // 80ms d'anticipation audio
+      const currentAudioTime = audioEngine.getCurrentTime();
+
+      while (nextNoteTime < currentAudioTime + lookaheadSec) {
+        scheduleStep(step, nextNoteTime);
+
+        const stepDuration = getStepDurationSec(step, st.bpm, st.swing);
+        nextNoteTime += stepDuration;
+        step = (step + 1) % 16;
+
+        // Gestion du mode CHAIN en fin de mesure (16 pas)
+        if (step === 0 && st.isSongMode && st.songChain.length > 0) {
+          const activeBlock = st.songChain[st.currentChainStep] || st.songChain[0];
+          const nextRepeat = st.currentRepeatCount + 1;
+
+          if (nextRepeat < activeBlock.repeats) {
+            st.currentRepeatCount = nextRepeat;
+            setCurrentRepeatCount(nextRepeat);
+          } else {
+            const nextChainIdx = (st.currentChainStep + 1) % st.songChain.length;
+            const nextBlock = st.songChain[nextChainIdx];
+            const targetPresetIdx = st.bankSlots[nextBlock.slotIndex] ?? 0;
+
+            st.currentChainStep = nextChainIdx;
+            st.currentRepeatCount = 0;
+            setCurrentChainStep(nextChainIdx);
+            setCurrentRepeatCount(0);
+
+            selectPattern(targetPresetIdx);
+          }
         }
       }
 
-      const sixteenthMs = (60 / st.bpm / 4) * 1000;
-      const swingFactor = (st.swing - 50) / 50; // -0.5 to +0.5
-      const delay =
-        step % 2 === 0
-          ? sixteenthMs * (1 + swingFactor * 0.45)
-          : sixteenthMs * (1 - swingFactor * 0.45);
-
-      step = (step + 1) % 16;
-      timerId = setTimeout(tick, Math.max(35, delay));
+      timerId = setTimeout(scheduler, 20); // Vérification toutes les 20ms
     };
 
-    tick();
+    scheduler();
 
     return () => {
       if (timerId) clearTimeout(timerId);
+      if (visualTimerId) clearTimeout(visualTimerId);
     };
-  }, [isPlaying, flashPad]);
+  }, [isPlaying, flashPad, selectPattern]);
 
   // --- COMPUTER KEYBOARD SHORTCUTS ---
   useEffect(() => {
@@ -1327,7 +1438,19 @@ const handleImportPreset = async (e) => {
       if (e.code === 'Space') {
         e.preventDefault();
         if (!audioUnlocked) handleUnlockAudio();
-        setIsPlaying((prev) => !prev);
+
+        setIsPlaying((prev) => {
+          const nextPlaying = !prev;
+          if (!nextPlaying) {
+            setCurrentChainStep(0);
+            setCurrentRepeatCount(0);
+            stateRef.current.currentChainStep = 0;
+            stateRef.current.currentRepeatCount = 0;
+          } else if (stateRef.current.isSongMode && stateRef.current.songChain.length > 0) {
+            startSongFromBeginning();
+          }
+          return nextPlaying;
+        });
         return;
       }
 
@@ -1340,7 +1463,7 @@ const handleImportPreset = async (e) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [triggerPad, audioUnlocked, handleUnlockAudio]);
+  }, [triggerPad, audioUnlocked, handleUnlockAudio, startSongFromBeginning]);
 
   // Tap Tempo Handler
   const handleTapTempo = () => {
@@ -1947,7 +2070,23 @@ const handleImportPreset = async (e) => {
               <button
                 onClick={() => {
                   if (!audioUnlocked) handleUnlockAudio();
-                  setIsPlaying((p) => !p);
+
+                  setIsPlaying((prev) => {
+                    const nextPlaying = !prev;
+
+                    // Si on arrête la lecture (STOP)
+                    if (!nextPlaying) {
+                      setCurrentChainStep(0);
+                      setCurrentRepeatCount(0);
+                      stateRef.current.currentChainStep = 0;
+                      stateRef.current.currentRepeatCount = 0;
+                    } else if (isSongMode && songChain.length > 0) {
+                      // Si on relance la lecture en mode CHAIN, on repart bien de la 1ère étape
+                      startSongFromBeginning();
+                    }
+
+                    return nextPlaying;
+                  });
                 }}
                 className={`py-3.5 px-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_4px_0_rgba(0,0,0,0.4)] active:translate-y-0.5 transition cursor-pointer border ${
                   isPlaying
@@ -2115,6 +2254,111 @@ const handleImportPreset = async (e) => {
                 >
                   ✕
                 </button>
+              </div>
+            </div>
+            {/* --- PROGRAMMATEUR DE CHAÎNE (SONG / CHAIN MODE) --- */}
+            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 mt-2 shadow-inner">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-1.5 border-b border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextMode = !isSongMode;
+                      setIsSongMode(nextMode);
+                      if (nextMode) startSongFromBeginning();
+                    }}
+                    className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border transition cursor-pointer ${
+                      isSongMode
+                        ? 'bg-emerald-500 text-zinc-950 border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-600 hover:bg-zinc-700'
+                    }`}
+                  >
+                    CHAIN MODE: {isSongMode ? 'ON' : 'OFF'}
+                  </button>
+
+                  {isSongMode && songChain.length > 0 && (
+                    <span className="text-[10px] font-mono text-emerald-400">
+                      Step {currentChainStep + 1}/{songChain.length} • Loop {currentRepeatCount + 1}/
+                      {songChain[currentChainStep]?.repeats}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addChainStep}
+                  className="px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-zinc-950 text-[10px] font-black uppercase cursor-pointer"
+                >
+                  + ÉTAPE
+                </button>
+              </div>
+
+              {/* Liste des blocs programmés dans l'ordre */}
+              <div className="flex flex-wrap items-center gap-1.5 max-h-32 overflow-y-auto pr-1">
+                {songChain.length === 0 ? (
+                  <span className="text-[10px] text-zinc-500 italic">
+                    Aucune étape. Cliquez sur "+ ÉTAPE" pour programmer l'ordre des slots.
+                  </span>
+                ) : (
+                  songChain.map((item, idx) => {
+                    const isCurrentBlock = isSongMode && currentChainStep === idx;
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex items-center gap-1 px-2 py-1 rounded border font-mono text-[10px] ${
+                          isCurrentBlock
+                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+                            : 'bg-zinc-950 border-zinc-700 text-zinc-300'
+                        }`}
+                      >
+                        <span className="text-zinc-500 font-bold">{idx + 1}.</span>
+
+                        {/* Choix du Bank Slot (1 à 8) */}
+                        <select
+                          value={item.slotIndex}
+                          onChange={(e) =>
+                            updateChainStep(idx, 'slotIndex', parseInt(e.target.value, 10))
+                          }
+                          className="bg-zinc-800 text-amber-400 font-bold rounded px-1 py-0.5 border border-zinc-700 focus:outline-none"
+                        >
+                          {bankSlots.map((presetIdx, sIdx) => (
+                            <option key={sIdx} value={sIdx}>
+                              S{sIdx + 1} ({patterns[presetIdx]?.name?.slice(0, 6) || `#${presetIdx + 1}`})
+                            </option>
+                          ))}
+                        </select>
+
+                        <span className="text-zinc-500">×</span>
+
+                        {/* Nombre de répétitions (1 à 32) */}
+                        <input
+                          type="number"
+                          min="1"
+                          max="32"
+                          value={item.repeats}
+                          onChange={(e) =>
+                            updateChainStep(
+                              idx,
+                              'repeats',
+                              Math.max(1, Math.min(32, parseInt(e.target.value, 10) || 1))
+                            )
+                          }
+                          title="Nombre de mesures (répétitions)"
+                          className="w-9 bg-zinc-800 text-center text-white font-bold rounded py-0.5 border border-zinc-700 focus:outline-none"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => removeChainStep(idx)}
+                          title="Retirer cette étape"
+                          className="text-zinc-500 hover:text-red-400 ml-0.5 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
             {/* --- 8 QUICK-ACCESS PRESET BANK BUTTONS --- */}
