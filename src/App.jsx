@@ -776,6 +776,7 @@ export default function App() {
   // Tap Tempo tracking
   const tapTimesRef = useRef([]);
   const padFlashTimersRef = useRef(new Map());
+  const sequencerStepRef = useRef(0);
 
   useEffect(() => () => {
     padFlashTimersRef.current.forEach((timerId) => clearTimeout(timerId));
@@ -1366,7 +1367,7 @@ const handleImportPreset = async (e) => {
     }
 
     audioEngine.init();
-    let step = 0;
+    let step = sequencerStepRef.current;
     let nextNoteTime = audioEngine.getCurrentTime() + 0.02;
     let timerId = null;
     const visualTimerIds = new Set();
@@ -1437,6 +1438,7 @@ const handleImportPreset = async (e) => {
         const stepDuration = getStepDurationSec(step, st.bpm, st.swing);
         nextNoteTime += stepDuration;
         step = (step + 1) % 16;
+        sequencerStepRef.current = step;
 
         // Gestion du mode CHAIN en fin de mesure (16 pas)
         if (step === 0 && st.isSongMode && st.songChain.length > 0) {
@@ -1529,6 +1531,10 @@ const handleImportPreset = async (e) => {
       }
       const avgMs = sum / (taps.length - 1);
       const newBpm = Math.min(180, Math.max(60, Math.round(60000 / avgMs)));
+      stateRef.current = {
+        ...stateRef.current,
+        bpm: newBpm,
+      };
       setBpm(newBpm);
       setLastTriggeredLabel(`TAP ${newBpm}`);
     } else {
