@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Play,
   Square,
@@ -1578,7 +1578,34 @@ const handleImportPreset = async (e) => {
     setSoloPart((prev) => (prev === group ? null : group));
   };
 
-  const currentPattern = patterns[patternIndex];
+  const currentPattern = useMemo(
+    () => patterns[patternIndex] ?? PRESET_PATTERNS[0],
+    [patterns, patternIndex]
+  );
+
+  const patternOptions = useMemo(
+    () => patterns.map((pattern, index) => (
+      <option key={index} value={index}>
+        {index + 1}. {pattern.name} ({pattern.bpm} BPM)
+      </option>
+    )),
+    [patterns]
+  );
+
+  const sequencerSteps = useMemo(
+    () => Array.from({ length: 16 }, (_, stepIdx) => {
+      const isActive = activeTrack === 'DRUM'
+        ? currentPattern.drums[selectedDrumVoice]?.[stepIdx] === 1
+        : Boolean(currentPattern.bass[stepIdx]);
+      const bassLabel =
+        activeTrack === 'BASS' && currentPattern.bass[stepIdx]
+          ? currentPattern.bass[stepIdx].replace(/[0-9]/g, '')
+          : null;
+
+      return { stepIdx, isActive, bassLabel };
+    }),
+    [activeTrack, currentPattern, selectedDrumVoice]
+  );
 
   const pressTimerRef = useRef(null);
 
@@ -2043,18 +2070,9 @@ const handleImportPreset = async (e) => {
 
           {/* 16-STEP SEQUENCER BUTTONS */}
           <div className="grid grid-cols-4 sm:grid-cols-8 lg:grid-cols-16 gap-1.5">
-            {Array.from({ length: 16 }).map((_, stepIdx) => {
+            {sequencerSteps.map(({ stepIdx, isActive, bassLabel }) => {
               const isCurrent = currentStep === stepIdx;
               const isBeatStart = stepIdx % 4 === 0;
-              const isActive =
-                activeTrack === 'DRUM'
-                  ? currentPattern.drums[selectedDrumVoice]?.[stepIdx] === 1
-                  : Boolean(currentPattern.bass[stepIdx]);
-
-              const bassLabel =
-                activeTrack === 'BASS' && currentPattern.bass[stepIdx]
-                  ? currentPattern.bass[stepIdx].replace(/[0-9]/g, '')
-                  : null;
 
               return (
                 <button
@@ -2506,11 +2524,7 @@ const handleImportPreset = async (e) => {
                             }}
                             className="w-full bg-zinc-950 text-zinc-200 text-xs p-1.5 rounded border border-zinc-700 focus:outline-none focus:border-amber-500 max-h-40"
                           >
-                            {patterns.map((p, idx) => (
-                              <option key={idx} value={idx}>
-                                {idx + 1}. {p.name} ({p.bpm} BPM)
-                              </option>
-                            ))}
+                            {patternOptions}
                           </select>
                         </div>
                       )}
