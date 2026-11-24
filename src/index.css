@@ -6,3 +6,24 @@
     text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
   }
 }
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+  html,
+  body,
+  #root {
+    min-height: 100dvh;
+  }
+
+  body {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}

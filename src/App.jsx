@@ -36,6 +36,7 @@ import {
   importBankFromFile,
 } from "./presetManager";
 import { DR202_100_PRESETS } from "./presets/presetsBank";
+import { createBitcrusher } from "./bitcrusher";
 
 /**
  * BOSS DR-202 Dr. Groove (1998) Emulator
@@ -268,6 +269,8 @@ class DR202AudioEngine {
     this.masterFilter = null;
     this.compressor = null;
     this.noiseBuffer = null;
+    this.bitcrusher = null;
+    this.bitcrusherAmount = 0;
 
     // Live controllable parameters (0 - 100)
     this.cutoff = 75;
@@ -307,7 +310,10 @@ class DR202AudioEngine {
 
       this.masterFilter.connect(this.compressor);
       this.compressor.connect(this.masterGain);
-      this.masterGain.connect(this.ctx.destination);
+      this.bitcrusher = createBitcrusher(this.ctx);
+      this.bitcrusher.setAmount(this.bitcrusherAmount);
+      this.masterGain.connect(this.bitcrusher.input);
+      this.bitcrusher.output.connect(this.ctx.destination);
 
       // Création des panners stéréo L/R indépendants
       this.drumPanner = this.ctx.createStereoPanner();
@@ -357,6 +363,13 @@ class DR202AudioEngine {
     if (bassPan !== undefined) this.bassPan = bassPan;
     this.updateFilterParams();
     this.updatePanParams();
+  }
+
+  setBitcrusherAmount(amount) {
+    this.bitcrusherAmount = Math.min(100, Math.max(0, Number(amount) || 0));
+    if (this.bitcrusher) {
+      this.bitcrusher.setAmount(this.bitcrusherAmount);
+    }
   }
 
   updatePanParams() {
@@ -903,6 +916,7 @@ export default function App() {
   const [drumPan, setDrumPan] = useState(50); // 50 = Centre
   const [bassPan, setBassPan] = useState(50); // 50 = Centre
   const [masterVol, setMasterVol] = useState(85);
+  const [bitcrusherAmount, setBitcrusherAmount] = useState(0);
 
   // Pattern Data (cloned from presets so user can live-edit)
   const [patterns, setPatterns] = useState(PRESET_PATTERNS);
@@ -1026,6 +1040,10 @@ export default function App() {
       bassPan,
     });
   }, [cutoff, resonance, decay, masterVol, drumPan, bassPan]);
+
+  useEffect(() => {
+    audioEngine.setBitcrusherAmount(bitcrusherAmount);
+  }, [bitcrusherAmount]);
 
   // Unlock Audio Handler
   const handleUnlockAudio = useCallback(() => {
@@ -1842,10 +1860,10 @@ export default function App() {
   };
 
   return (
-    <div className='min-h-screen bg-zinc-950 text-zinc-900 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 lg:p-8 font-sans select-none overflow-x-hidden'>
+    <div className='min-h-[100dvh] bg-zinc-950 text-zinc-900 flex flex-col items-center justify-start p-1 sm:p-2 md:p-3 lg:p-4 font-sans select-none overflow-x-hidden'>
       {/* Audio Engine Activation Banner (Required by browser Web Audio policy) */}
       {!audioUnlocked && (
-        <div className='w-full max-w-4xl mb-4 bg-amber-500 text-zinc-950 px-4 py-3 rounded-xl shadow-[0_0_25px_rgba(245,158,11,0.4)] flex flex-col sm:flex-row items-center justify-between gap-3 border border-amber-300'>
+        <div className='w-full max-w-5xl mb-2 bg-amber-500 text-zinc-950 px-3 py-2 rounded-xl shadow-[0_0_25px_rgba(245,158,11,0.4)] flex flex-col sm:flex-row items-center justify-between gap-2 border border-amber-300'>
           <div className='flex items-center gap-3'>
             <div className='p-2 bg-zinc-950 text-amber-400 rounded-lg animate-pulse'>
               <Power className='w-5 h-5' />
@@ -1872,9 +1890,9 @@ export default function App() {
       {/* =====================================================================
           BOSS DR-202 HARDWARE CHASSIS
          ===================================================================== */}
-      <div className='w-full max-w-5xl rounded-[24px] sm:rounded-[30px] p-3 sm:p-5 lg:p-6 bg-[#b8bcc4] shadow-[0_25px_60px_rgba(0,0,0,0.85),inset_0_2px_3px_rgba(255,255,255,0.8),inset_0_-4px_8px_rgba(0,0,0,0.35)] border-2 border-zinc-500 relative overflow-hidden'>
+      <div className='w-full max-w-[1180px] rounded-[18px] sm:rounded-[24px] p-2 sm:p-3 lg:p-4 bg-[#b8bcc4] shadow-[0_25px_60px_rgba(0,0,0,0.85),inset_0_2px_3px_rgba(255,255,255,0.8),inset_0_-4px_8px_rgba(0,0,0,0.35)] border-2 border-zinc-500 relative'>
         {/* TOP HARDWARE BRANDING & GROOVE STRIP */}
-        <div className='relative flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b-2 border-zinc-500/50'>
+        <div className='relative flex flex-wrap items-center justify-between gap-1 pb-1.5 mb-2 border-b-2 border-zinc-500/50'>
           <div className='flex items-baseline gap-3'>
             <span className='font-black text-xl sm:text-2xl tracking-tighter text-zinc-900 italic'>
               FOSS
@@ -1911,8 +1929,8 @@ export default function App() {
         {/* =====================================================================
             UPPER CONTROL DECK: 3 REAL-TIME KNOBS + AMBER BACKLIT LCD + NAV
            ===================================================================== */}
-        <div className='relative grid grid-cols-1 gap-3 lg:grid-cols-12 lg:gap-4 mb-4 sm:mb-5 items-center'>
-          {/* LEFT: 5 REALTIME MODIFY KNOBS (Cutoff, Resonance, Decay, Drum Pan, Bass Pan) */}
+        <div className='relative grid grid-cols-1 gap-2 lg:grid-cols-12 lg:gap-3 mb-2 lg:mb-3 items-center'>
+          {/* LEFT: 6 REALTIME MODIFY KNOBS */}
           <div className='lg:col-span-4 bg-zinc-400/40 rounded-2xl p-2.5 sm:p-3 border border-zinc-500/40 shadow-inner'>
             <div className='flex items-center justify-between mb-2 px-1'>
               <span className='text-[10px] font-black uppercase tracking-widest text-zinc-800 flex items-center gap-1'>
@@ -1924,8 +1942,8 @@ export default function App() {
               </span>
             </div>
 
-            {/* Grille de 5 boutons rotatifs */}
-            <div className='grid grid-cols-3 sm:grid-cols-5 gap-1 sm:gap-1.5'>
+            {/* Grille de 6 boutons rotatifs */}
+            <div className='grid grid-cols-6 gap-0.5 sm:gap-1'>
               <RotaryKnob
                 label='CUTOFF'
                 subLabel='LPF'
@@ -1960,6 +1978,13 @@ export default function App() {
                 value={bassPan}
                 onChange={setBassPan}
                 accentColor='#ff006a'
+              />
+              <RotaryKnob
+                label='BITCRUSH'
+                subLabel='FX'
+                value={bitcrusherAmount}
+                onChange={setBitcrusherAmount}
+                accentColor='#d946ef'
               />
             </div>
           </div>
@@ -2002,7 +2027,7 @@ export default function App() {
 
                 {/* LCD Row 2: Active Mode, Genre, Last Triggered */}
                 <div className='relative flex items-center justify-between text-[11px] font-bold mb-2'>
-                  <div className='flex items-center gap-1.5'>
+                  <div className='flex flex-wrap items-center gap-1.5'>
                     <span className='px-1.5 py-0.2 bg-zinc-950/15 rounded font-black'>
                       TRK:{activeTrack}
                     </span>
@@ -2156,7 +2181,7 @@ export default function App() {
         {/* =====================================================================
             MIDDLE DECK: TRACK SELECT, MUTE/SOLO MIXER & 16-STEP SEQUENCER
            ===================================================================== */}
-        <div className='relative bg-zinc-800/95 text-zinc-100 rounded-2xl p-3 sm:p-4 mb-5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] border border-zinc-700'>
+        <div className='relative bg-zinc-800/95 text-zinc-100 rounded-2xl p-2 sm:p-3 mb-2 lg:mb-3 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)] border border-zinc-700'>
           {/* Top Bar of Sequencer: Track Mode Toggle & Part Mute/Solo */}
           <div className='flex flex-wrap items-center justify-between gap-3 pb-3 mb-3 border-b border-zinc-700/80'>
             {/* Track Select (DRUM vs BASS) */}
@@ -2186,6 +2211,105 @@ export default function App() {
                   <Music className='w-3.5 h-3.5' /> BASS SYNTH
                 </button>
               </div>
+            </div>
+
+            {/* Transport controls beside Track Edit */}
+            <div className='flex items-center gap-1.5'>
+              <button
+                onClick={() => {
+                  if (!audioUnlocked) handleUnlockAudio();
+
+                  setIsPlaying((prev) => {
+                    const nextPlaying = !prev;
+                    if (!nextPlaying) {
+                      setCurrentChainStep(0);
+                      setCurrentRepeatCount(0);
+                      stateRef.current.currentChainStep = 0;
+                      stateRef.current.currentRepeatCount = 0;
+                    } else if (isSongMode && songChain.length > 0) {
+                      startSongFromBeginning();
+                    }
+                    return nextPlaying;
+                  });
+                }}
+                className={`min-h-10 px-3 rounded-lg font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 shadow active:translate-y-0.5 transition cursor-pointer border ${
+                  isPlaying
+                    ? "bg-emerald-500 text-zinc-950 border-emerald-300"
+                    : "bg-zinc-900 text-emerald-400 border-zinc-700"
+                }`}
+              >
+                {isPlaying ? (
+                  <>
+                    <Square className='w-3.5 h-3.5 fill-current' /> STOP
+                  </>
+                ) : (
+                  <>
+                    <Play className='w-3.5 h-3.5 fill-current' /> PLAY
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  if (!audioUnlocked) handleUnlockAudio();
+                  setIsRecording((recording) => !recording);
+                  if (!isPlaying && !isRecording) setIsPlaying(true);
+                }}
+                className={`min-h-10 px-3 rounded-lg font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 shadow active:translate-y-0.5 transition cursor-pointer border ${
+                  isRecording
+                    ? "bg-red-600 text-white border-red-300"
+                    : "bg-zinc-900 text-red-400 border-zinc-700"
+                }`}
+              >
+                <Circle className='w-3.5 h-3.5 fill-current' /> REC
+              </button>
+              <button
+                onClick={handleTapTempo}
+                className='min-h-10 px-3 rounded-lg bg-zinc-900 text-amber-300 font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 shadow active:translate-y-0.5 border border-zinc-700 transition cursor-pointer'
+              >
+                <Zap className='w-3.5 h-3.5' /> TAP
+              </button>
+              <button
+                onClick={handleRandomizePreset}
+                title='Générer un pattern complet aléatoire'
+                className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-purple-700 hover:bg-purple-600 text-white border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
+              >
+                <Shuffle className='w-3.5 h-3.5' /> RANDOMIZER
+              </button>
+              <button
+                onClick={handleRandomizeDrums}
+                title='Générer uniquement la batterie aléatoire'
+                className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-amber-600 hover:bg-amber-500 text-zinc-950 border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
+              >
+                <Shuffle className='w-3.5 h-3.5' /> RND DRUM
+              </button>
+              <button
+                onClick={handleRandomizeBass}
+                title='Générer uniquement la basse aléatoire'
+                className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-orange-600 hover:bg-orange-500 text-zinc-950 border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
+              >
+                <Shuffle className='w-3.5 h-3.5' /> RND BASS
+              </button>
+              <button
+                onClick={handleExportPreset}
+                title='Export Current Pattern (.json)'
+                className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-amber-400 border border-zinc-900 shadow active:translate-y-0.5 cursor-pointer'
+              >
+                SAVE JSON
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                title='Load Pattern from File (.json)'
+                className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-emerald-400 border border-zinc-900 shadow active:translate-y-0.5 cursor-pointer'
+              >
+                LOAD JSON
+              </button>
+              <input
+                ref={fileInputRef}
+                type='file'
+                accept='.json,application/json'
+                onChange={handleImportPreset}
+                className='hidden'
+              />
             </div>
 
             {/* Part Mute / Solo Strip */}
@@ -2228,6 +2352,9 @@ export default function App() {
               })}
             </div>
           </div>
+
+          {/* Pattern generation and file actions */}
+          <div className='flex flex-wrap items-center gap-1.5 mb-3'></div>
 
           {/* Sub-selector for Drum Voice OR Bass Octave/Note */}
           <div className='flex flex-wrap items-center justify-between gap-2 mb-3'>
@@ -2299,7 +2426,7 @@ export default function App() {
                 <button
                   key={stepIdx}
                   onClick={() => toggleStep(stepIdx)}
-                  className={`relative h-10 sm:h-12 lg:h-14 rounded-lg flex flex-col items-center justify-between p-1 border sm:p-1.5 border transition cursor-pointer ${
+                  className={`relative h-8 sm:h-10 lg:h-11 rounded-lg flex flex-col items-center justify-between p-1 border sm:p-1 border transition cursor-pointer ${
                     isActive
                       ? activeTrack === "DRUM"
                         ? "bg-amber-500/20 border-amber-400 text-amber-300"
@@ -2338,440 +2465,94 @@ export default function App() {
         </div>
 
         {/* =====================================================================
-            LOWER DECK: TRANSPORT CONTROLS + 13 RUBBERIZED CHROMATIC PADS
+            LOWER DECK: PRESET/BANK MANAGEMENT + 13 RUBBERIZED CHROMATIC PADS
            ===================================================================== */}
-        <div className='relative grid grid-cols-1 gap-3 lg:grid-cols-12 lg:gap-4 items-stretch'>
-          {/* TRANSPORT SECTION (Left 4 cols) */}
-          <div className='lg:col-span-12 bg-zinc-400/50 rounded-2xl p-2.5 sm:p-3.5 border border-zinc-500/40 shadow-inner flex flex-col justify-between gap-3'>
+        <div className='relative grid grid-cols-1 gap-2 md:grid-cols-12 md:gap-3 items-stretch'>
+          {/* PRESET STORE & CHAIN MODE */}
+          <div className='md:col-span-4 bg-zinc-400/50 rounded-2xl p-2 sm:p-2.5 border border-zinc-500/40 shadow-inner flex flex-col justify-between gap-2'>
             <div className='flex items-center justify-between'>
               <span className='text-[10px] font-black uppercase tracking-widest text-zinc-800'>
-                Transport &amp; Sync
-              </span>
-              <span className='text-[9px] font-mono font-bold text-zinc-700'>
-                [SPACE = PLAY]
+                Preset &amp; Chain
               </span>
             </div>
 
-            {/* Play / Stop / Rec / Tap Buttons */}
-            <div className='grid grid-cols-2 gap-2.5'>
-              {/* PLAY / STOP */}
-              <button
-                onClick={() => {
-                  if (!audioUnlocked) handleUnlockAudio();
-
-                  setIsPlaying((prev) => {
-                    const nextPlaying = !prev;
-
-                    // Si on arrête la lecture (STOP)
-                    if (!nextPlaying) {
-                      setCurrentChainStep(0);
-                      setCurrentRepeatCount(0);
-                      stateRef.current.currentChainStep = 0;
-                      stateRef.current.currentRepeatCount = 0;
-                    } else if (isSongMode && songChain.length > 0) {
-                      // Si on relance la lecture en mode CHAIN, on repart bien de la 1ère étape
-                      startSongFromBeginning();
-                    }
-
-                    return nextPlaying;
-                  });
-                }}
-                className={`py-3.5 px-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_4px_0_rgba(0,0,0,0.4)] active:translate-y-0.5 transition cursor-pointer border ${
-                  isPlaying
-                    ? "bg-emerald-500 text-zinc-950 border-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.5)]"
-                    : "bg-zinc-800 hover:bg-zinc-700 text-emerald-400 border-zinc-900"
-                }`}
-              >
-                {isPlaying ? (
-                  <>
-                    <Square className='w-4 h-4 fill-current' /> STOP
-                  </>
-                ) : (
-                  <>
-                    <Play className='w-4 h-4 fill-current' /> PLAY
-                  </>
-                )}
-              </button>
-
-              {/* REALTIME REC */}
-              <button
-                onClick={() => {
-                  if (!audioUnlocked) handleUnlockAudio();
-                  setIsRecording((r) => !r);
-                  if (!isPlaying && !isRecording) {
-                    setIsPlaying(true);
-                  }
-                }}
-                className={`py-3.5 px-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_4px_0_rgba(0,0,0,0.4)] active:translate-y-0.5 transition cursor-pointer border ${
-                  isRecording
-                    ? "bg-red-600 text-white border-red-300 animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.6)]"
-                    : "bg-zinc-800 hover:bg-zinc-700 text-red-400 border-zinc-900"
-                }`}
-              >
-                <Circle className='w-4 h-4 fill-current' /> REC
-              </button>
-
-              {/* TAP TEMPO */}
-              <button
-                onClick={handleTapTempo}
-                className='col-span-2 py-2.5 px-3 rounded-xl bg-zinc-700 hover:bg-zinc-600 active:translate-y-0.5 text-amber-300 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-[0_3px_0_rgba(0,0,0,0.4)] border border-zinc-800 transition cursor-pointer'
-              >
-                <Zap className='w-3.5 h-3.5' /> TAP TEMPO
-              </button>
-            </div>
-
-            {/* Preset Quick-Load Pills */}
-            {/* Preset Import / Export & Randomizer Controls */}
-            <div className='flex items-center gap-1.5'>
-              <button
-                onClick={handleRandomizePreset}
-                title='Générer un pattern complet aléatoire'
-                className='px-2 py-1 text-[10px] font-black tracking-wider uppercase bg-purple-700 hover:bg-purple-600 text-white border border-zinc-900 rounded shadow active:translate-y-0.5 flex items-center gap-1 cursor-pointer'
-              >
-                <Shuffle className='w-3 h-3' /> RANDOMIZER
-              </button>
-              <button
-                onClick={handleRandomizeDrums}
-                title='Générer uniquement la batterie aléatoire'
-                className='px-2 py-1 text-[10px] font-black tracking-wider uppercase bg-amber-600 hover:bg-amber-500 text-zinc-950 border border-zinc-900 rounded shadow active:translate-y-0.5 flex items-center gap-1 cursor-pointer'
-              >
-                <Shuffle className='w-3 h-3' /> RND DRUM
-              </button>
-              <button
-                onClick={handleRandomizeBass}
-                title='Générer uniquement la basse aléatoire'
-                className='px-2 py-1 text-[10px] font-black tracking-wider uppercase bg-orange-600 hover:bg-orange-500 text-zinc-950 border border-zinc-900 rounded shadow active:translate-y-0.5 flex items-center gap-1 cursor-pointer'
-              >
-                <Shuffle className='w-3 h-3' /> RND BASS
-              </button>
-              <button
-                onClick={handleExportPreset}
-                title='Export Current Pattern (.json)'
-                className='px-2 py-1 text-[10px] font-bold tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-amber-400 border border-zinc-900 rounded shadow active:translate-y-0.5 cursor-pointer'
-              >
-                SAVE JSON
-              </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                title='Load Pattern from File (.json)'
-                className='px-2 py-1 text-[10px] font-bold tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-emerald-400 border border-zinc-900 rounded shadow active:translate-y-0.5 cursor-pointer'
-              >
-                LOAD JSON
-              </button>
-              <input
-                ref={fileInputRef}
-                type='file'
-                accept='.json,application/json'
-                onChange={handleImportPreset}
-                className='hidden'
-              />
-            </div>
-            {/* --- STORE PERSONNEL (LOCALSTORAGE) --- */}
-            <div className='bg-zinc-900/90 border border-zinc-700 rounded-lg p-2 flex flex-col gap-1.5 mt-1'>
-              <div className='flex items-center justify-between'>
-                <span className='text-[9px] font-black uppercase tracking-wider text-amber-400'>
-                  My Preset Store ({userPresets.length})
-                </span>
-                {userPresets.length > 0 && (
-                  <button
-                    type='button'
-                    onClick={exportAllUserPresetsToFile}
-                    title='Télécharger toute la bibliothèque personnelle (.json)'
-                    className='text-[9px] font-bold text-emerald-400 hover:underline cursor-pointer'
-                  >
-                    EXPORT ALL (.JSON)
-                  </button>
-                )}
-              </div>
-
-              {/* Ligne 1 : Nommer + Sauvegarder dans le navigateur */}
-              <div className='flex items-center gap-1'>
-                <input
-                  type='text'
-                  value={customPresetName}
-                  onChange={(e) => setCustomPresetName(e.target.value)}
-                  placeholder='Nom du preset...'
-                  className='flex-1 min-w-0 bg-zinc-950 text-zinc-200 text-[10px] px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-amber-500'
-                />
-                <button
-                  type='button'
-                  onClick={handleSaveToStore}
-                  title='Sauvegarder le pattern actif dans le navigateur'
-                  className='px-2 py-1 text-[10px] font-black uppercase bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded shadow active:translate-y-0.5 cursor-pointer whitespace-nowrap'
-                >
-                  + STORE
-                </button>
-              </div>
-
-              {/* Ligne 2 : Sélecteur des presets sauvegardés + Télécharger / Supprimer */}
-              <div className='flex items-center gap-1'>
-                <select
-                  value={selectedUserPresetUid}
-                  onChange={(e) => handleLoadFromStore(e.target.value)}
-                  className='flex-1 min-w-0 bg-zinc-950 text-zinc-200 text-[10px] px-1.5 py-1 rounded border border-zinc-700 focus:outline-none focus:border-amber-500'
-                >
-                  <option value=''>
-                    {userPresets.length === 0
-                      ? "-- Aucun preset sauvegardé --"
-                      : "-- Charger un preset sauvé --"}
-                  </option>
-                  {userPresets.map((up) => (
-                    <option key={up.uid} value={up.uid}>
-                      {up.name} ({up.bpm} BPM)
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type='button'
-                  disabled={!selectedUserPresetUid}
-                  onClick={handleDownloadStoreItem}
-                  title='Télécharger ce preset (.json)'
-                  className='px-2 py-1 text-[10px] font-bold uppercase bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-emerald-400 rounded border border-zinc-800 cursor-pointer'
-                >
-                  DL
-                </button>
-
-                <button
-                  type='button'
-                  disabled={!selectedUserPresetUid}
-                  onClick={handleDeleteFromStore}
-                  title='Supprimer ce preset du navigateur'
-                  className='px-2 py-1 text-[10px] font-bold uppercase bg-zinc-700 hover:bg-red-700 disabled:opacity-40 text-red-400 hover:text-white rounded border border-zinc-800 cursor-pointer'
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-            {/* --- PROGRAMMATEUR DE CHAÎNE (SONG / CHAIN MODE) --- */}
-            <div className='bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 mt-2 shadow-inner'>
-              <div className='flex flex-wrap items-center justify-between gap-2 mb-2 pb-1.5 border-b border-zinc-800'>
-                <div className='flex items-center gap-2'>
-                  <button
-                    type='button'
-                    onClick={() => {
-                      const nextMode = !isSongMode;
-                      setIsSongMode(nextMode);
-                      if (nextMode) startSongFromBeginning();
-                    }}
-                    className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border transition cursor-pointer ${
-                      isSongMode
-                        ? "bg-emerald-500 text-zinc-950 border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.4)]"
-                        : "bg-zinc-800 text-zinc-300 border-zinc-600 hover:bg-zinc-700"
-                    }`}
-                  >
-                    CHAIN MODE: {isSongMode ? "ON" : "OFF"}
-                  </button>
-
-                  {isSongMode && songChain.length > 0 && (
-                    <span className='text-[10px] font-mono text-emerald-400'>
-                      Step {currentChainStep + 1}/{songChain.length} • Loop{" "}
-                      {currentRepeatCount + 1}/
-                      {songChain[currentChainStep]?.repeats}
-                    </span>
+            <div className='grid grid-cols-1 lg:grid-cols-1 gap-2'>
+              {/* --- STORE PERSONNEL (LOCALSTORAGE) --- */}
+              <div className='bg-zinc-900/90 border border-zinc-700 rounded-lg p-2 flex flex-col gap-1.5 mt-1'>
+                <div className='flex items-center justify-between'>
+                  <span className='text-[9px] font-black uppercase tracking-wider text-amber-400'>
+                    My Preset Store ({userPresets.length})
+                  </span>
+                  {userPresets.length > 0 && (
+                    <button
+                      type='button'
+                      onClick={exportAllUserPresetsToFile}
+                      title='Télécharger toute la bibliothèque personnelle (.json)'
+                      className='text-[9px] font-bold text-emerald-400 hover:underline cursor-pointer'
+                    >
+                      EXPORT ALL (.JSON)
+                    </button>
                   )}
                 </div>
 
-                <button
-                  type='button'
-                  onClick={addChainStep}
-                  className='px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-zinc-950 text-[10px] font-black uppercase cursor-pointer'
-                >
-                  + ÉTAPE
-                </button>
-              </div>
+                {/* Ligne 1 : Nommer + Sauvegarder dans le navigateur */}
+                <div className='flex items-center gap-1'>
+                  <input
+                    type='text'
+                    value={customPresetName}
+                    onChange={(e) => setCustomPresetName(e.target.value)}
+                    placeholder='Nom du preset...'
+                    className='flex-1 min-w-0 bg-zinc-950 text-zinc-200 text-[10px] px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-amber-500'
+                  />
+                  <button
+                    type='button'
+                    onClick={handleSaveToStore}
+                    title='Sauvegarder le pattern actif dans le navigateur'
+                    className='px-2 py-1 text-[10px] font-black uppercase bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded shadow active:translate-y-0.5 cursor-pointer whitespace-nowrap'
+                  >
+                    + STORE
+                  </button>
+                </div>
 
-              {/* Liste des blocs programmés dans l'ordre */}
-              <div className='flex flex-wrap items-center gap-1.5 max-h-32 overflow-y-auto pr-1'>
-                {songChain.length === 0 ? (
-                  <span className='text-[10px] text-zinc-500 italic'>
-                    Aucune étape. Cliquez sur "+ ÉTAPE" pour programmer l'ordre
-                    des slots.
-                  </span>
-                ) : (
-                  songChain.map((item, idx) => {
-                    const isCurrentBlock =
-                      isSongMode && currentChainStep === idx;
-                    return (
-                      <div
-                        key={item.id}
-                        className={`flex items-center gap-1 px-2 py-1 rounded border font-mono text-[10px] ${
-                          isCurrentBlock
-                            ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
-                            : "bg-zinc-950 border-zinc-700 text-zinc-300"
-                        }`}
-                      >
-                        <span className='text-zinc-500 font-bold'>
-                          {idx + 1}.
-                        </span>
+                {/* Ligne 2 : Sélecteur des presets sauvegardés + Télécharger / Supprimer */}
+                <div className='flex items-center gap-1'>
+                  <select
+                    value={selectedUserPresetUid}
+                    onChange={(e) => handleLoadFromStore(e.target.value)}
+                    className='flex-1 min-w-0 bg-zinc-950 text-zinc-200 text-[10px] px-1.5 py-1 rounded border border-zinc-700 focus:outline-none focus:border-amber-500'
+                  >
+                    <option value=''>
+                      {userPresets.length === 0
+                        ? "-- Aucun preset sauvegardé --"
+                        : "-- Charger un preset sauvé --"}
+                    </option>
+                    {userPresets.map((up) => (
+                      <option key={up.uid} value={up.uid}>
+                        {up.name} ({up.bpm} BPM)
+                      </option>
+                    ))}
+                  </select>
 
-                        {/* Choix du Bank Slot (1 à 8) */}
-                        <select
-                          value={item.slotIndex}
-                          onChange={(e) =>
-                            updateChainStep(
-                              idx,
-                              "slotIndex",
-                              parseInt(e.target.value, 10),
-                            )
-                          }
-                          className='bg-zinc-800 text-amber-400 font-bold rounded px-1 py-0.5 border border-zinc-700 focus:outline-none'
-                        >
-                          {bankSlots.map((presetIdx, sIdx) => (
-                            <option key={sIdx} value={sIdx}>
-                              S{sIdx + 1} (
-                              {patterns[presetIdx]?.name?.slice(0, 6) ||
-                                `#${presetIdx + 1}`}
-                              )
-                            </option>
-                          ))}
-                        </select>
+                  <button
+                    type='button'
+                    disabled={!selectedUserPresetUid}
+                    onClick={handleDownloadStoreItem}
+                    title='Télécharger ce preset (.json)'
+                    className='px-2 py-1 text-[10px] font-bold uppercase bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-emerald-400 rounded border border-zinc-800 cursor-pointer'
+                  >
+                    DL
+                  </button>
 
-                        <span className='text-zinc-500'>×</span>
-
-                        {/* Nombre de répétitions (1 à 32) */}
-                        <input
-                          type='number'
-                          min='1'
-                          max='32'
-                          value={item.repeats}
-                          onChange={(e) =>
-                            updateChainStep(
-                              idx,
-                              "repeats",
-                              Math.max(
-                                1,
-                                Math.min(32, parseInt(e.target.value, 10) || 1),
-                              ),
-                            )
-                          }
-                          title='Nombre de mesures (répétitions)'
-                          className='w-9 bg-zinc-800 text-center text-white font-bold rounded py-0.5 border border-zinc-700 focus:outline-none'
-                        />
-
-                        <button
-                          type='button'
-                          onClick={() => removeChainStep(idx)}
-                          title='Retirer cette étape'
-                          className='text-zinc-500 hover:text-red-400 ml-0.5 cursor-pointer'
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-            {/* --- 8 QUICK-ACCESS PRESET BANK BUTTONS --- */}
-            <div className='bg-zinc-900 p-3 rounded-lg border border-zinc-700 shadow-inner my-3'>
-              <div className='flex justify-between items-center mb-2'>
-                <span className='text-[10px] font-bold tracking-widest text-zinc-400 uppercase'>
-                  Bank Slots (Tap to Load • Hold 2s / Right-Click to Assign)
-                </span>
-                <span className='text-[10px] text-amber-500 font-mono'>
-                  {/* CORRECTION 1 : patternIndex au lieu de currentPattern */}
-                  Active:{" "}
-                  {patterns[patternIndex]?.name ||
-                    `Pattern ${patternIndex + 1}`}
-                </span>
-              </div>
-              <div className='flex items-center gap-2 my-2'>
-                <button
-                  type='button'
-                  onClick={() => setFixTempo((v) => !v)}
-                  className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border cursor-pointer ${
-                    fixTempo
-                      ? "bg-amber-500 text-zinc-950 border-amber-300"
-                      : "bg-zinc-800 text-zinc-300 border-zinc-600"
-                  }`}
-                >
-                  FIX TEMPO: {fixTempo ? "ON" : "OFF"}
-                </button>
-
-                <button
-                  type='button'
-                  onClick={() => setFixGroove((v) => !v)}
-                  className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border cursor-pointer ${
-                    fixGroove
-                      ? "bg-amber-500 text-zinc-950 border-amber-300"
-                      : "bg-zinc-800 text-zinc-300 border-zinc-600"
-                  }`}
-                >
-                  FIX GROOVE: {fixGroove ? "ON" : "OFF"}
-                </button>
-              </div>
-              <div className='grid grid-cols-2 sm:grid-cols-4 gap-2'>
-                {bankSlots.map((presetIdx, slotNum) => {
-                  const assignedPattern = patterns[presetIdx];
-                  const isActive = patternIndex === presetIdx;
-
-                  return (
-                    <div key={slotNum} className='relative'>
-                      {/* Main Slot Button */}
-                      <button
-                        onClick={() => {
-                          selectPattern(presetIdx);
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          setConfiguringSlotIndex(slotNum);
-                        }}
-                        onTouchStart={() => handleSlotTouchStart(slotNum)}
-                        onTouchEnd={handleSlotTouchEnd}
-                        onMouseDown={() => handleSlotTouchStart(slotNum)}
-                        onMouseUp={handleSlotTouchEnd}
-                        className={`w-full h-12 flex flex-col items-center justify-center rounded border font-mono text-xs transition-all shadow-md active:translate-y-0.5 ${
-                          isActive
-                            ? "bg-amber-500 text-zinc-950 border-amber-300 font-bold shadow-amber-500/50"
-                            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-600"
-                        }`}
-                      >
-                        <span className='text-[9px] opacity-70'>
-                          SLOT {slotNum + 1}
-                        </span>
-                        <span className='truncate w-full px-1 text-[10px]'>
-                          {assignedPattern?.name
-                            ? assignedPattern.name.substring(0, 8)
-                            : `#${presetIdx + 1}`}
-                        </span>
-                      </button>
-
-                      {/* Configuration Dropdown Modal for this Slot */}
-                      {configuringSlotIndex === slotNum && (
-                        <div className='absolute z-50 left-0 top-14 w-48 bg-zinc-900 border border-amber-500/50 rounded shadow-2xl p-2'>
-                          <div className='flex justify-between items-center mb-1 pb-1 border-b border-zinc-800 text-[10px] font-bold text-amber-400'>
-                            <span>ASSIGN SLOT {slotNum + 1}</span>
-                            <button
-                              onClick={() => setConfiguringSlotIndex(null)}
-                              className='text-zinc-400 hover:text-white px-1'
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <select
-                            autoFocus
-                            value={presetIdx}
-                            onChange={(e) => {
-                              const newPresetIdx = parseInt(e.target.value, 10);
-
-                              const updatedSlots = [...bankSlots];
-                              updatedSlots[slotNum] = newPresetIdx;
-                              setBankSlots(updatedSlots);
-
-                              selectPattern(newPresetIdx);
-
-                              setConfiguringSlotIndex(null);
-                            }}
-                            className='w-full bg-zinc-950 text-zinc-200 text-xs p-1.5 rounded border border-zinc-700 focus:outline-none focus:border-amber-500 max-h-40'
-                          >
-                            {patternOptions}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                  <button
+                    type='button'
+                    disabled={!selectedUserPresetUid}
+                    onClick={handleDeleteFromStore}
+                    title='Supprimer ce preset du navigateur'
+                    className='px-2 py-1 text-[10px] font-bold uppercase bg-zinc-700 hover:bg-red-700 disabled:opacity-40 text-red-400 hover:text-white rounded border border-zinc-800 cursor-pointer'
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
               {/* --- STORE PERSONNEL DES 8 BANK SLOTS --- */}
               <div className='bg-zinc-900/90 border border-zinc-700 rounded-lg p-2 flex flex-col gap-1.5 mt-2'>
@@ -2857,9 +2638,122 @@ export default function App() {
               </div>
             </div>
           </div>
+          <div className='md:col-span-8 flex min-w-0 flex-col gap-2'>
+            {/* --- 8 QUICK-ACCESS PRESET BANK BUTTONS --- */}
+            <div className='bg-zinc-900 p-2 sm:p-3 rounded-lg border border-zinc-700 shadow-inner'>
+              <div className='flex justify-between items-center mb-2'>
+                <span className='text-[10px] font-bold tracking-widest text-zinc-400 uppercase'>
+                  Bank Slots (Tap to Load • Hold 2s / Right-Click to Assign)
+                </span>
+                <span className='text-[10px] text-amber-500 font-mono'>
+                  {/* CORRECTION 1 : patternIndex au lieu de currentPattern */}
+                  Active:{" "}
+                  {patterns[patternIndex]?.name ||
+                    `Pattern ${patternIndex + 1}`}
+                </span>
+              </div>
+              <div className='flex items-center gap-2 my-2'>
+                <button
+                  type='button'
+                  onClick={() => setFixTempo((v) => !v)}
+                  className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border cursor-pointer ${
+                    fixTempo
+                      ? "bg-amber-500 text-zinc-950 border-amber-300"
+                      : "bg-zinc-800 text-zinc-300 border-zinc-600"
+                  }`}
+                >
+                  FIX TEMPO: {fixTempo ? "ON" : "OFF"}
+                </button>
 
-          {/* 13 RUBBERIZED CHROMATIC TRIGGER PADS (Right 8 cols) */}
-          <div className='lg:col-span-12 bg-zinc-900 rounded-2xl p-2.5 sm:p-3.5 lg:p-4 shadow-[inset_0_3px_10px_rgba(0,0,0,0.9)] border-2 border-zinc-700 flex flex-col justify-between'>
+                <button
+                  type='button'
+                  onClick={() => setFixGroove((v) => !v)}
+                  className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider border cursor-pointer ${
+                    fixGroove
+                      ? "bg-amber-500 text-zinc-950 border-amber-300"
+                      : "bg-zinc-800 text-zinc-300 border-zinc-600"
+                  }`}
+                >
+                  FIX GROOVE: {fixGroove ? "ON" : "OFF"}
+                </button>
+              </div>
+              <div className='grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2'>
+                {bankSlots.map((presetIdx, slotNum) => {
+                  const assignedPattern = patterns[presetIdx];
+                  const isActive = patternIndex === presetIdx;
+
+                  return (
+                    <div key={slotNum} className='relative'>
+                      {/* Main Slot Button */}
+                      <button
+                        onClick={() => {
+                          selectPattern(presetIdx);
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setConfiguringSlotIndex(slotNum);
+                        }}
+                        onTouchStart={() => handleSlotTouchStart(slotNum)}
+                        onTouchEnd={handleSlotTouchEnd}
+                        onMouseDown={() => handleSlotTouchStart(slotNum)}
+                        onMouseUp={handleSlotTouchEnd}
+                        className={`w-full h-12 flex flex-col items-center justify-center rounded border font-mono text-xs transition-all shadow-md active:translate-y-0.5 ${
+                          isActive
+                            ? "bg-amber-500 text-zinc-950 border-amber-300 font-bold shadow-amber-500/50"
+                            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-600"
+                        }`}
+                      >
+                        <span className='text-[9px] opacity-70'>
+                          SLOT {slotNum + 1}
+                        </span>
+                        <span className='truncate w-full px-1 text-[10px]'>
+                          {assignedPattern?.name
+                            ? assignedPattern.name.substring(0, 8)
+                            : `#${presetIdx + 1}`}
+                        </span>
+                      </button>
+
+                      {/* Configuration Dropdown Modal for this Slot */}
+                      {configuringSlotIndex === slotNum && (
+                        <div className='absolute z-50 left-0 top-14 w-48 bg-zinc-900 border border-amber-500/50 rounded shadow-2xl p-2'>
+                          <div className='flex justify-between items-center mb-1 pb-1 border-b border-zinc-800 text-[10px] font-bold text-amber-400'>
+                            <span>ASSIGN SLOT {slotNum + 1}</span>
+                            <button
+                              onClick={() => setConfiguringSlotIndex(null)}
+                              className='text-zinc-400 hover:text-white px-1'
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <select
+                            autoFocus
+                            value={presetIdx}
+                            onChange={(e) => {
+                              const newPresetIdx = parseInt(e.target.value, 10);
+
+                              const updatedSlots = [...bankSlots];
+                              updatedSlots[slotNum] = newPresetIdx;
+                              setBankSlots(updatedSlots);
+
+                              selectPattern(newPresetIdx);
+
+                              setConfiguringSlotIndex(null);
+                            }}
+                            className='w-full bg-zinc-950 text-zinc-200 text-xs p-1.5 rounded border border-zinc-700 focus:outline-none focus:border-amber-500 max-h-40'
+                          >
+                            {patternOptions}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 13 RUBBERIZED CHROMATIC TRIGGER PADS (Full-width bottom row) */}
+          <div className='md:col-span-12 bg-zinc-900 rounded-2xl p-2 sm:p-3 lg:p-3 shadow-[inset_0_3px_10px_rgba(0,0,0,0.9)] border-2 border-zinc-700 flex flex-col justify-between'>
             <div className='flex items-center justify-between mb-3'>
               <span className='text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-1.5'>
                 <Radio className='w-3.5 h-3.5 text-amber-500' />
@@ -2881,7 +2775,7 @@ export default function App() {
                   <button
                     key={pad.id}
                     onMouseDown={() => triggerPad(pad)}
-                    className={`group relative h-12 sm:h-14 lg:h-16 rounded-xl flex flex-col items-center justify-between p-1.5 sm:p-2 transition-all duration-75 cursor-pointer border-2 ${
+                    className={`group relative h-10 sm:h-12 lg:h-14 rounded-xl flex flex-col items-center justify-between p-1 sm:p-1.5 transition-all duration-75 cursor-pointer border-2 ${
                       isLit
                         ? "bg-orange-500 border-amber-200 translate-y-0.5 shadow-[0_0_20px_rgba(245,158,11,0.8)]"
                         : isSelectedBass
@@ -2937,7 +2831,7 @@ export default function App() {
                   <button
                     key={pad.id}
                     onMouseDown={() => triggerPad(pad)}
-                    className={`group relative h-14 sm:h-16 lg:h-20 rounded-xl flex flex-col items-center justify-between p-1.5 sm:p-2 transition-all duration-75 cursor-pointer border-2 ${
+                    className={`group relative h-12 sm:h-14 lg:h-16 rounded-xl flex flex-col items-center justify-between p-1 sm:p-1.5 transition-all duration-75 cursor-pointer border-2 ${
                       isLit
                         ? "bg-orange-500 border-white translate-y-0.5 shadow-[0_0_22px_rgba(251,191,36,0.85)]"
                         : isSelectedBass

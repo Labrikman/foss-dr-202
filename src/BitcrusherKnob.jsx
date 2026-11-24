@@ -40,7 +40,7 @@ export default function BitcrusherKnob() {
           <span className="h-3 w-1 rounded-full bg-fuchsia-400 shadow-[0_0_6px_#e879f9]" />
         </div>
       </div>
-      <div class="mt-1 flex items-center gap-1 font-mono">
+      <div className="mt-1 flex items-center gap-1 font-mono">
         <span className="text-[9px] font-bold text-zinc-500">WET</span>
         <span className="rounded bg-zinc-300 px-1 text-[9px] font-black text-zinc-900">
           {amount}%

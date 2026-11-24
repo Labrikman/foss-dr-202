@@ -20,6 +20,7 @@ Before producing sound, click **Power On Audio** or press **Space** / any trigge
 - Fat dual-oscillator bass synthesizer
 - Tempo, swing/groove, cutoff, resonance, and decay controls
 - Independent drum and bass stereo panning
+- Bitcrush master-effect control
 - Master volume, mute, and solo controls
 - 100 built-in preset patterns
 - Random pattern, drum, and bass generators
@@ -42,6 +43,7 @@ Before producing sound, click **Power On Audio** or press **Space** / any trigge
 | Decay | Adjust drum and sound decay |
 | D-PAN | Adjust drum stereo position |
 | B-PAN | Adjust bass stereo position |
+| BITCRUSH | Add and blend master-output sample/bit degradation |
 | DRUMS / BASS SYNTH | Switch the active track |
 | RND buttons | Randomize a complete pattern, drums, or bass |
 | Bank slots | Tap to load; right-click or hold to assign a preset |
