@@ -2269,27 +2269,6 @@ export default function App() {
                 <Zap className='w-3.5 h-3.5' /> TAP
               </button>
               <button
-                onClick={handleRandomizePreset}
-                title='Générer un pattern complet aléatoire'
-                className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-purple-700 hover:bg-purple-600 text-white border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
-              >
-                <Shuffle className='w-3.5 h-3.5' /> RANDOMIZER
-              </button>
-              <button
-                onClick={handleRandomizeDrums}
-                title='Générer uniquement la batterie aléatoire'
-                className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-amber-600 hover:bg-amber-500 text-zinc-950 border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
-              >
-                <Shuffle className='w-3.5 h-3.5' /> RND DRUM
-              </button>
-              <button
-                onClick={handleRandomizeBass}
-                title='Générer uniquement la basse aléatoire'
-                className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-orange-600 hover:bg-orange-500 text-zinc-950 border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
-              >
-                <Shuffle className='w-3.5 h-3.5' /> RND BASS
-              </button>
-              <button
                 onClick={handleExportPreset}
                 title='Export Current Pattern (.json)'
                 className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-amber-400 border border-zinc-900 shadow active:translate-y-0.5 cursor-pointer'
@@ -2311,7 +2290,27 @@ export default function App() {
                 className='hidden'
               />
             </div>
-
+            <button
+              onClick={handleRandomizePreset}
+              title='Générer un pattern complet aléatoire'
+              className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-purple-700 hover:bg-purple-600 text-white border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
+            >
+              <Shuffle className='w-3.5 h-3.5' /> RANDOMIZER
+            </button>
+            <button
+              onClick={handleRandomizeDrums}
+              title='Générer uniquement la batterie aléatoire'
+              className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-amber-600 hover:bg-amber-500 text-zinc-950 border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
+            >
+              <Shuffle className='w-3.5 h-3.5' /> RND DRUM
+            </button>
+            <button
+              onClick={handleRandomizeBass}
+              title='Générer uniquement la basse aléatoire'
+              className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-orange-600 hover:bg-orange-500 text-zinc-950 border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
+            >
+              <Shuffle className='w-3.5 h-3.5' /> RND BASS
+            </button>
             {/* Part Mute / Solo Strip */}
             <div className='flex flex-wrap items-center gap-1.5'>
               <span className='text-[10px] font-black uppercase tracking-wider text-zinc-400 mr-1'>
