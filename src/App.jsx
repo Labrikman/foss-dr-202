@@ -35,231 +35,24 @@ import {
   exportBankToFile,
   importBankFromFile,
 } from "./presetManager";
-import { DR202_100_PRESETS } from "./presets/presetsBank";
 import { createBitcrusher } from "./bitcrusher";
-
+import { NOTE_FREQS,
+   PAD_CONFIG,
+   PAD_BY_DRUM_ID,
+   PAD_BY_FULL_NOTE,
+   DRUM_VOICES,
+   PRESET_PATTERNS,
+   normalizePreset,
+   CONTROLLER_STORAGE_KEY,
+   CONTROL_TARGETS,
+   DEFAULT_BINDINGS,
+  } from "./constant.js";
 /**
  * BOSS DR-202 Dr. Groove (1998) Emulator
  * Single-file React application with Web Audio API Drum & Bass Synthesis,
  * 16-Step Sequencer with Groove/Swing, 13-Pad Chromatic Trigger Layout,
  * Interactive Rotary Knobs, and Amber Backlit LCD Display.
  */
-
-// --- CONSTANTS & MUSICAL DATA ---
-
-const NOTE_FREQS = {
-  C1: 32.7,
-  "C#1": 34.65,
-  D1: 36.71,
-  "D#1": 38.89,
-  E1: 41.2,
-  F1: 43.65,
-  "F#1": 46.25,
-  G1: 49.0,
-  "G#1": 51.91,
-  A1: 55.0,
-  "A#1": 58.27,
-  B1: 61.74,
-  C2: 65.41,
-  "C#2": 69.3,
-  D2: 73.42,
-  "D#2": 77.78,
-  E2: 82.41,
-  F2: 87.31,
-  "F#2": 92.5,
-  G2: 98.0,
-  "G#2": 103.83,
-  A2: 110.0,
-  "A#2": 116.54,
-  B2: 123.47,
-  C3: 130.81,
-};
-
-// 13-Pad Chromatic Layout (C to C) matching DR-202 lower/upper pad layout
-const PAD_CONFIG = [
-  {
-    id: 0,
-    note: "C",
-    fullNote: "C2",
-    isBlack: false,
-    keyHint: "A",
-    drumName: "KICK 1",
-    drumId: "kick",
-    color: "amber",
-  },
-  {
-    id: 1,
-    note: "C#",
-    fullNote: "C#2",
-    isBlack: true,
-    keyHint: "W",
-    drumName: "RIMSHOT",
-    drumId: "rim",
-    color: "red",
-  },
-  {
-    id: 2,
-    note: "D",
-    fullNote: "D2",
-    isBlack: false,
-    keyHint: "S",
-    drumName: "SNARE 1",
-    drumId: "snare",
-    color: "amber",
-  },
-  {
-    id: 3,
-    note: "D#",
-    fullNote: "D#2",
-    isBlack: true,
-    keyHint: "E",
-    drumName: "CLAP",
-    drumId: "clap",
-    color: "red",
-  },
-  {
-    id: 4,
-    note: "E",
-    fullNote: "E2",
-    isBlack: false,
-    keyHint: "D",
-    drumName: "SNARE 2",
-    drumId: "snare2",
-    color: "amber",
-  },
-  {
-    id: 5,
-    note: "F",
-    fullNote: "F2",
-    isBlack: false,
-    keyHint: "F",
-    drumName: "LOW TOM",
-    drumId: "tomLow",
-    color: "amber",
-  },
-  {
-    id: 6,
-    note: "F#",
-    fullNote: "F#2",
-    isBlack: true,
-    keyHint: "T",
-    drumName: "CL HAT",
-    drumId: "chh",
-    color: "red",
-  },
-  {
-    id: 7,
-    note: "G",
-    fullNote: "G2",
-    isBlack: false,
-    keyHint: "G",
-    drumName: "MID TOM",
-    drumId: "tomMid",
-    color: "amber",
-  },
-  {
-    id: 8,
-    note: "G#",
-    fullNote: "G#2",
-    isBlack: true,
-    keyHint: "Y",
-    drumName: "PDL HAT",
-    drumId: "phh",
-    color: "red",
-  },
-  {
-    id: 9,
-    note: "A",
-    fullNote: "A2",
-    isBlack: false,
-    keyHint: "H",
-    drumName: "HI TOM",
-    drumId: "tomHi",
-    color: "amber",
-  },
-  {
-    id: 10,
-    note: "A#",
-    fullNote: "A#2",
-    isBlack: true,
-    keyHint: "U",
-    drumName: "OP HAT",
-    drumId: "ohh",
-    color: "red",
-  },
-  {
-    id: 11,
-    note: "B",
-    fullNote: "B2",
-    isBlack: false,
-    keyHint: "J",
-    drumName: "CRASH",
-    drumId: "crash",
-    color: "amber",
-  },
-  {
-    id: 12,
-    note: "C+",
-    fullNote: "C3",
-    isBlack: false,
-    keyHint: "K",
-    drumName: "PERC / FX",
-    drumId: "perc",
-    color: "amber",
-  },
-];
-
-const PAD_BY_DRUM_ID = new Map(
-  PAD_CONFIG.filter((pad) => pad.drumId).map((pad) => [pad.drumId, pad]),
-);
-
-const PAD_BY_FULL_NOTE = new Map(
-  PAD_CONFIG.filter((pad) => pad.fullNote).map((pad) => [pad.fullNote, pad]),
-);
-
-const DRUM_VOICES = [
-  { id: "kick", label: "KICK", group: "KICK" },
-  { id: "snare", label: "SNARE", group: "SNARE" },
-  { id: "clap", label: "CLAP", group: "SNARE" },
-  { id: "rim", label: "RIM", group: "SNARE" },
-  { id: "chh", label: "CL HAT", group: "HATS" },
-  { id: "ohh", label: "OP HAT", group: "HATS" },
-  { id: "tomLow", label: "TOM", group: "PERC" },
-  { id: "perc", label: "PERC", group: "PERC" },
-];
-
-const normalizePreset = (preset, index) => {
-  const rawSteps = preset.steps || {};
-  const empty16 = () => Array(16).fill(0);
-
-  return {
-    id: preset.id || String(index + 1).padStart(2, "0"),
-    name: preset.name || `Pattern ${index + 1}`,
-    genre: preset.genre || "Preset",
-    bpm: preset.bpm || 92,
-    swing: preset.swing ?? 50,
-    cutoff: preset.cutoff ?? 75,
-    resonance: preset.resonance ?? 40,
-    decay: preset.decay ?? 60,
-    bassOctave: preset.bassOctave ?? 0,
-    drums: preset.drums || {
-      kick: rawSteps.kick || empty16(),
-      snare: rawSteps.snare || empty16(),
-      clap: rawSteps.clap || empty16(),
-      rim: rawSteps.rim || empty16(),
-      chh: rawSteps.ch || empty16(),
-      ohh: rawSteps.oh || empty16(),
-      tomLow: rawSteps.tom || empty16(),
-      perc: rawSteps.perc || empty16(),
-    },
-    bass:
-      preset.bass ||
-      (rawSteps.bass || empty16()).map((value) => (value ? "C2" : null)),
-  };
-};
-
-const PRESET_PATTERNS = DR202_100_PRESETS.map(normalizePreset);
-
 // --- WEB AUDIO API SYNTHESIZER ENGINE ---
 
 class DR202AudioEngine {
@@ -924,6 +717,41 @@ export default function App() {
   // Tracks which preset index (0 to 199) is assigned to each of the 8 hardware slots
   const [bankSlots, setBankSlots] = useState([0, 1, 2, 3, 4, 5, 6, 7]);
 
+  const [bindings, setBindings] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CONTROLLER_STORAGE_KEY) || 'null');
+      return saved && typeof saved === 'object'
+        ? { ...DEFAULT_BINDINGS, ...saved }
+        : DEFAULT_BINDINGS;
+    } catch {
+      return DEFAULT_BINDINGS;
+    }
+  });
+
+  const [learningTargetId, setLearningTargetId] = useState(null);
+  const [selectedLearnTarget, setSelectedLearnTarget] = useState('slot_0');
+  const [midiConnected, setMidiConnected] = useState(false);
+  const [midiDeviceName, setMidiDeviceName] = useState('');
+  const [gamepadName, setGamepadName] = useState('');
+  const [lastInputSource, setLastInputSource] = useState('');
+
+  const bindingsRef = useRef(bindings);
+  const learningTargetRef = useRef(learningTargetId);
+
+  useEffect(() => {
+    bindingsRef.current = bindings;
+    try {
+      localStorage.setItem(CONTROLLER_STORAGE_KEY, JSON.stringify(bindings));
+    } catch (err) {
+      console.error('Erreur sauvegarde bindings:', err);
+    }
+  }, [bindings]);
+
+  useEffect(() => {
+    learningTargetRef.current = learningTargetId;
+  }, [learningTargetId]);
+
+
   // Tracks which slot currently has its configuration menu open (null if closed)
   const [configuringSlotIndex, setConfiguringSlotIndex] = useState(null);
 
@@ -1118,24 +946,6 @@ export default function App() {
     },
     [patternIndex],
   );
-  const addChainStep = () => {
-    setSongChain((prev) => [
-      ...prev,
-      { id: `c_${Date.now()}`, slotIndex: 0, repeats: 2 },
-    ]);
-  };
-
-  const updateChainStep = (index, field, value) => {
-    setSongChain((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
-    });
-  };
-
-  const removeChainStep = (index) => {
-    setSongChain((prev) => prev.filter((_, i) => i !== index));
-  };
 
   // Démarre la lecture depuis le premier bloc de la chaîne
   const startSongFromBeginning = () => {
@@ -1732,6 +1542,208 @@ export default function App() {
       visualTimerIds.clear();
     };
   }, [isPlaying, flashPad, selectPattern]);
+
+  const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+  const mapNormalizedToTarget = useCallback(
+    (targetId, norm01) => {
+      const val = clamp01(norm01);
+      if (targetId === 'cutoff') setCutoff(Math.round(val * 100));
+      else if (targetId === 'resonance') setResonance(Math.round(val * 100));
+      else if (targetId === 'decay') setDecay(Math.round(val * 100));
+      else if (targetId === 'drumPan') setDrumPan(Math.round(val * 100));
+      else if (targetId === 'bassPan') setBassPan(Math.round(val * 100));
+      else if (targetId === 'bitcrusherAmount') setBitcrusherAmount(Math.round(val * 100));
+      else if (targetId === 'masterVol') setMasterVol(Math.round(val * 100));
+      else if (targetId === 'bpm') {
+        const nextBpm = Math.round(60 + val * (180 - 60));
+        setBpm(nextBpm);
+        updateCurrentPatternTempoOrSwing(nextBpm, stateRef.current.swing);
+      } else if (targetId === 'swing') {
+        const nextSwing = Math.round(50 + val * (75 - 50));
+        setSwing(nextSwing);
+        updateCurrentPatternTempoOrSwing(stateRef.current.bpm, nextSwing);
+      }
+    },
+    [updateCurrentPatternTempoOrSwing]
+  );
+
+  const triggerTargetAction = useCallback(
+    (targetId, normValue = 1) => {
+      if (!audioUnlocked) handleUnlockAudio();
+
+      if (targetId.startsWith('slot_')) {
+        const slotIdx = parseInt(targetId.replace('slot_', ''), 10);
+        const presetIdx = bankSlots[slotIdx];
+        if (typeof presetIdx === 'number') {
+          selectPattern(presetIdx);
+          setLastTriggeredLabel(`SLOT ${slotIdx + 1}`);
+        }
+        return;
+      }
+
+      mapNormalizedToTarget(targetId, normValue);
+    },
+    [audioUnlocked, handleUnlockAudio, bankSlots, selectPattern, mapNormalizedToTarget]
+  );
+
+  // Enregistre une source d'entrée (ex: "key:F1", "midi:note:36", "gamepad:btn:2", "gamepad:axis:0")
+  const assignSourceToTarget = useCallback((targetId, sourceKey) => {
+    setBindings((prev) => {
+      const next = { ...prev };
+      // Retire sourceKey des autres cibles pour éviter les conflits
+      Object.keys(next).forEach((k) => {
+        next[k] = (next[k] || []).filter((s) => s !== sourceKey);
+      });
+      const currentList = next[targetId] || [];
+      next[targetId] = [...currentList, sourceKey];
+      return next;
+    });
+    setLastInputSource(sourceKey);
+    setLearningTargetId(null);
+    setLastTriggeredLabel(`BOUND ${sourceKey.slice(0, 12)}`);
+  }, []);
+
+  const dispatchControlInput = useCallback(
+    (sourceKey, kind, normValue = 1) => {
+      setLastInputSource(sourceKey);
+
+      const learnTarget = learningTargetRef.current;
+      if (learnTarget) {
+        const isAxisTarget = CONTROL_TARGETS.find((t) => t.id === learnTarget)?.type === 'axis';
+        if (kind === 'trigger' || (kind === 'axis' && isAxisTarget && Math.abs(normValue - 0.5) > 0.2)) {
+          assignSourceToTarget(learnTarget, sourceKey);
+          return;
+        }
+      }
+
+      const currentBindings = bindingsRef.current;
+      const matchedTargets = Object.entries(currentBindings)
+        .filter(([, sources]) => Array.isArray(sources) && sources.includes(sourceKey))
+        .map(([targetId]) => targetId);
+
+      matchedTargets.forEach((targetId) => {
+        if (kind === 'trigger' && targetId.startsWith('slot_')) {
+          triggerTargetAction(targetId, 1);
+        } else if (kind === 'axis') {
+          mapNormalizedToTarget(targetId, normValue);
+        } else if (kind === 'trigger') {
+          // Touche/bouton sur une cible d'axe : bascule entre 0% et 100%
+          triggerTargetAction(targetId, normValue);
+        }
+      });
+    },
+    [assignSourceToTarget, triggerTargetAction, mapNormalizedToTarget]
+  );
+
+  // --- ÉCOUTE MIDI (AKAI LPD8 ET TOUT CONTRÔLEUR MIDI) ---
+  const handleMidiMessage = useCallback(
+    (event) => {
+      const data = event.data;
+      if (!data || data.length < 2) return;
+      const command = data[0] & 0xf0;
+      const d1 = data[1];
+      const d2 = data.length > 2 ? data[2] : 0;
+
+      if (command === 0x90 && d2 > 0) {
+        dispatchControlInput(`midi:note:${d1}`, 'trigger', d2 / 127);
+      } else if (command === 0xb0) {
+        // Si CC envoyé par un pad (0 ou 127) vs potard (0..127)
+        dispatchControlInput(`midi:cc:${d1}`, 'axis', d2 / 127);
+      }
+    },
+    [dispatchControlInput]
+  );
+
+  const connectMidiController = useCallback(async () => {
+    if (typeof navigator === 'undefined' || !navigator.requestMIDIAccess) return;
+    try {
+      const access = await navigator.requestMIDIAccess();
+      const bindInputs = () => {
+        const inputs = Array.from(access.inputs.values());
+        const preferred = inputs.find((inp) => /lpd8/i.test(inp.name || '')) || inputs[0];
+        inputs.forEach((inp) => {
+          inp.onmidimessage = null;
+          inp.onmidimessage = handleMidiMessage;
+        });
+        setMidiConnected(inputs.length > 0);
+        setMidiDeviceName(preferred ? preferred.name || 'MIDI Device' : '');
+      };
+      bindInputs();
+      access.onstatechange = bindInputs;
+    } catch {
+      setMidiConnected(false);
+    }
+  }, [handleMidiMessage]);
+
+  // --- ÉCOUTE MANETTE (GAMEPAD API : BOUTONS + AXES) ---
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') {
+      return;
+    }
+
+    let rafId = null;
+    const prevButtonsRef = { current: [] };
+    const prevAxesRef = { current: [] };
+
+    const pollGamepads = () => {
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      const gp = Array.from(gamepads || []).find(Boolean);
+
+      if (gp) {
+        setGamepadName((prev) => (prev === gp.id ? prev : gp.id));
+
+        gp.buttons.forEach((btn, idx) => {
+          const pressed = Boolean(btn && btn.pressed);
+          const wasPressed = Boolean(prevButtonsRef.current[idx]);
+          if (pressed && !wasPressed) {
+            dispatchControlInput(`gamepad:btn:${idx}`, 'trigger', btn.value ?? 1);
+          }
+          prevButtonsRef.current[idx] = pressed;
+        });
+
+        gp.axes.forEach((axisVal, idx) => {
+          const prevVal = prevAxesRef.current[idx] ?? 0;
+          if (Math.abs(axisVal - prevVal) > 0.04) {
+            prevAxesRef.current[idx] = axisVal;
+            // Convertit -1..+1 en 0..1 (avec deadzone centrale)
+            const norm = Math.abs(axisVal) < 0.06 ? 0.5 : clamp01((axisVal + 1) / 2);
+            dispatchControlInput(`gamepad:axis:${idx}`, 'axis', norm);
+          }
+        });
+      } else {
+        setGamepadName((prev) => (prev === '' ? prev : ''));
+      }
+
+      rafId = requestAnimationFrame(pollGamepads);
+    };
+
+    rafId = requestAnimationFrame(pollGamepads);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [dispatchControlInput]);
+
+  // --- ÉCOUTE CLAVIER UNIVERSELLE (EN PLUS DES PADS A..K ET ESPACE) ---
+  useEffect(() => {
+    const padKeys = new Set(PAD_CONFIG.map((p) => p.keyHint.toLowerCase()));
+
+    const onKeyDownUniversal = (e) => {
+      if (e.repeat) return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+        return;
+      }
+      if (e.code === 'Space') return; // Géré par le transport
+      const k = e.key.toLowerCase();
+      if (!learningTargetRef.current && padKeys.has(k)) {
+        return; // Touches des 13 pads conservées pour le jeu direct
+      }
+      dispatchControlInput(`key:${e.code}`, 'trigger', 1);
+    };
+
+    window.addEventListener('keydown', onKeyDownUniversal);
+    return () => window.removeEventListener('keydown', onKeyDownUniversal);
+  }, [dispatchControlInput]);
 
   // --- COMPUTER KEYBOARD SHORTCUTS ---
   useEffect(() => {
@@ -2670,6 +2682,73 @@ export default function App() {
             </div>
           </div>
           <div className='md:col-span-8 flex min-w-0 flex-col gap-2'>
+            {/* --- MAPPING UNIVERSEL (LPD8 / MIDI + CLAVIER + MANETTE) --- */}
+            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 mb-2 text-[10px] text-zinc-200 flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 font-mono">
+                  <span className={midiConnected ? 'text-emerald-400 font-bold' : 'text-zinc-400'}>
+                    MIDI: {midiConnected ? midiDeviceName : 'Off'}
+                  </span>
+                  <span className="text-zinc-600">|</span>
+                  <span className={gamepadName ? 'text-emerald-400 font-bold' : 'text-zinc-400'}>
+                    PAD: {gamepadName ? gamepadName.slice(0, 20) : 'Off'}
+                  </span>
+                  {lastInputSource && (
+                    <span className="text-amber-400">Last: {lastInputSource}</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={connectMidiController}
+                    className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-black uppercase border border-zinc-600 cursor-pointer"
+                  >
+                    SCAN MIDI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBindings(DEFAULT_BINDINGS)}
+                    className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold uppercase border border-zinc-600 cursor-pointer"
+                  >
+                    RESET MAP
+                  </button>
+                </div>
+              </div>
+
+              {/* Sélecteur de cible + bouton LEARN */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <select
+                  value={selectedLearnTarget}
+                  onChange={(e) => setSelectedLearnTarget(e.target.value)}
+                  className="bg-zinc-950 text-zinc-200 text-[10px] px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-amber-500"
+                >
+                  {CONTROL_TARGETS.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label} ({(bindings[t.id] || []).join(', ') || 'aucun'})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLearningTargetId((prev) =>
+                      prev === selectedLearnTarget ? null : selectedLearnTarget
+                    )
+                  }
+                  className={`px-2.5 py-1 rounded font-black uppercase cursor-pointer ${
+                    learningTargetId === selectedLearnTarget
+                      ? 'bg-red-600 text-white animate-pulse'
+                      : 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
+                  }`}
+                >
+                  {learningTargetId === selectedLearnTarget
+                    ? 'APPUYEZ / TOURNEZ...'
+                    : 'LEARN'}
+                </button>
+              </div>
+            </div>
             {/* --- 8 QUICK-ACCESS PRESET BANK BUTTONS --- */}
             <div className='bg-zinc-900 p-2 sm:p-3 rounded-lg border border-zinc-700 shadow-inner'>
               <div className='flex justify-between items-center mb-2'>
