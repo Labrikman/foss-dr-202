@@ -1377,9 +1377,9 @@ export default function App() {
   // donwload the configuration of 8 slots in .json
   const handleDownloadBank = () => {
     const found = userBanks.find((b) => b.uid === selectedUserBankUid);
-    const payload = found || { name: "Custom Bank", slots: bankSlots };
-    const safeName = payload.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    exportBankToFile(payload, `dr202-bank-${safeName}.json`);
+    const payload = found || { name: 'Custom Bank', slots: bankSlots };
+    const safeName = payload.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    exportBankToFile(payload, patterns, `dr202-bank-${safeName}.json`);
   };
 
   // Import .json Bank Slots
@@ -1388,18 +1388,50 @@ export default function App() {
     if (!file) return;
     try {
       const imported = await importBankFromFile(file);
-      const updated = saveUserBankToStorage(imported.slots, imported.name);
-      setUserBanks(updated);
-      setSelectedUserBankUid(updated[0]?.uid || "");
-      setBankSlots(imported.slots);
-      if (typeof imported.slots[0] === "number") {
-        selectPattern(imported.slots[0]);
+      let nextPatterns = [...patterns];
+      let nextUserPresets = [...userPresets];
+
+      const resolvedSlots = imported.slots.map((originalIdx, slotIdx) => {
+        const embedded = imported.embeddedPresets?.[slotIdx];
+        if (!embedded) {
+          return Math.max(0, Math.min(nextPatterns.length - 1, originalIdx));
+        }
+
+        const targetIdx =
+          originalIdx >= 0 && originalIdx < nextPatterns.length
+            ? originalIdx
+            : slotIdx % nextPatterns.length;
+
+        const normalized = normalizePreset(embedded, targetIdx);
+        nextPatterns[targetIdx] = normalized;
+
+        // Optionnel : sauvegarde aussi dans le store personnel si absent
+        const alreadyInStore = nextUserPresets.some(
+          (up) => up.name === normalized.name
+        );
+        if (!alreadyInStore) {
+          nextUserPresets = saveUserPresetToStorage(normalized, normalized.name);
+        }
+
+        return targetIdx;
+      });
+
+      setPatterns(nextPatterns);
+      setUserPresets(nextUserPresets);
+      setBankSlots(resolvedSlots);
+
+      const updatedBanks = saveUserBankToStorage(resolvedSlots, imported.name);
+      setUserBanks(updatedBanks);
+      setSelectedUserBankUid(updatedBanks[0]?.uid || '');
+
+      if (typeof resolvedSlots[0] === 'number') {
+        selectPattern(resolvedSlots[0]);
       }
-      setLastTriggeredLabel("BANK IMP");
+      setLastTriggeredLabel('BANK IMP');
     } catch (err) {
       alert(`Erreur d'import Bank : ${err.message}`);
     } finally {
-      e.target.value = "";
+      e.target.value = '';
     }
   };
   // Trigger a Pad (Drum or Bass depending on activeTrack)

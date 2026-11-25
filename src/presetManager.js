@@ -156,15 +156,35 @@ export function deleteUserBankFromStorage(uid) {
 }
 
 /**
- * Export a .json of 8 Bank Slots.
+ * Exporte une configuration de Bank Slots en incluant l'instantané
+ * des presets assignés aux 8 slots pour éviter toute désynchronisation.
  */
-export function exportBankToFile(bankEntry, filename = 'dr202-bank-slots.json') {
+export function exportBankToFile(
+  bankEntry,
+  patternsList = [],
+  filename = 'dr202-bank-slots.json'
+) {
+  const slots = Array.isArray(bankEntry.slots) ? bankEntry.slots : [];
+  const embeddedPresets = {};
+
+  slots.forEach((presetIdx, slotIdx) => {
+    const pat = patternsList[presetIdx];
+    if (pat) {
+      embeddedPresets[slotIdx] = JSON.parse(JSON.stringify(pat));
+    }
+  });
+
   const payload = {
-    device: 'FOSS DR-202 Dr. Groove Emulator',
+    device: 'BOSS DR-202 Dr. Groove Emulator',
     type: 'bank_slots',
-    version: '1.0',
+    version: '1.1',
     exportedAt: new Date().toISOString(),
-    data: bankEntry,
+    data: {
+      uid: bankEntry.uid || `bank_${Date.now()}`,
+      name: bankEntry.name || 'Custom Bank',
+      slots: [...slots],
+      embeddedPresets,
+    },
   };
 
   const jsonString = JSON.stringify(payload, null, 2);
@@ -181,12 +201,12 @@ export function exportBankToFile(bankEntry, filename = 'dr202-bank-slots.json') 
 }
 
 /**
- * Import a .json of 8 Bank Slots.
+ * Importe un fichier .json de Bank Slots et retourne les slots + presets embarqués.
  */
 export function importBankFromFile(file) {
   return new Promise((resolve, reject) => {
     if (!file) {
-      reject(new Error('No file selected.'));
+      reject(new Error('Aucun fichier sélectionné.'));
       return;
     }
 
@@ -198,18 +218,19 @@ export function importBankFromFile(file) {
         const slots = Array.isArray(bankData) ? bankData : bankData.slots;
 
         if (!Array.isArray(slots) || slots.length !== 8) {
-          throw new Error('Invalid Bank Slots format (8 slots expected).');
+          throw new Error('Format de Bank Slots invalide (8 slots attendus).');
         }
 
         resolve({
           name: bankData.name || 'Imported Bank',
           slots: slots.map((n) => (typeof n === 'number' ? n : 0)),
+          embeddedPresets: bankData.embeddedPresets || {},
         });
       } catch (err) {
         reject(err);
       }
     };
-    reader.onerror = () => reject(new Error('Error reading the file.'));
+    reader.onerror = () => reject(new Error('Erreur de lecture du fichier.'));
     reader.readAsText(file);
   });
 }
