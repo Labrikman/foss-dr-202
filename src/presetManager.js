@@ -234,3 +234,53 @@ export function importBankFromFile(file) {
     reader.readAsText(file);
   });
 }
+
+/**
+ * Importe un fichier .json (preset unique OU bibliothèque complète exportée via EXPORT ALL)
+ * et l'ajoute dans le store personnel localStorage.
+ */
+export function importUserPresetsToStorage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error('Aucun fichier sélectionné.'));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target.result);
+        const rawData = parsed.data || parsed.presets || parsed;
+
+        // Cas 1 : Bibliothèque complète (tableau de presets)
+        const listToImport = Array.isArray(rawData)
+          ? rawData
+          : rawData && typeof rawData === 'object'
+          ? [rawData]
+          : [];
+
+        if (listToImport.length === 0) {
+          throw new Error('Aucun preset valide trouvé dans ce fichier JSON.');
+        }
+
+        let updatedStore = getSavedUserPresets();
+
+        // On parcourt en ordre inverse pour conserver l'ordre d'origine en tête de liste
+        [...listToImport].reverse().forEach((item, idx) => {
+          const fallbackName =
+            item.name || `Imported Preset #${updatedStore.length + idx + 1}`;
+          updatedStore = saveUserPresetToStorage(item, fallbackName);
+        });
+
+        resolve({
+          presets: updatedStore,
+          importedCount: listToImport.length,
+        });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error('Erreur de lecture du fichier.'));
+    reader.readAsText(file);
+  });
+}
