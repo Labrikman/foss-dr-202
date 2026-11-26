@@ -257,3 +257,23 @@ export const DEFAULT_BINDINGS = {
     swing: ['midi:cc:8'],
     masterVol: [],
   };
+
+export const KIT_FLAVORS = [
+  "dr202",
+  "tr808",
+  "tr909",
+  "electro",
+  "lofi",
+  "dub",
+  "industrial",
+];
+
+export const DRUM_KITS = [
+  { id: "dr202", label: "DR-202 Groove", mapping: { KICK: "dr202", SNARE: "dr202", HATS: "dr202", PERC: "dr202" } },
+  { id: "tr808", label: "TR-808 Sub",    mapping: { KICK: "tr808", SNARE: "tr808", HATS: "tr808", PERC: "tr808" } },
+  { id: "tr909", label: "TR-909 Club",   mapping: { KICK: "tr909", SNARE: "tr909", HATS: "tr909", PERC: "tr909" } },
+  { id: "electro", label: "Electro FM",  mapping: { KICK: "electro", SNARE: "electro", HATS: "electro", PERC: "electro" } },
+  { id: "lofi", label: "90s Break/LoFi", mapping: { KICK: "lofi", SNARE: "lofi", HATS: "lofi", PERC: "lofi" } },
+  { id: "dub", label: "Dub Sub",        mapping: { KICK: "dub", SNARE: "dub", HATS: "dub", PERC: "dub" } },
+  { id: "industrial", label: "Industrial", mapping: { KICK: "industrial", SNARE: "industrial", HATS: "industrial", PERC: "industrial" } },
+];

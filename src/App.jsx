@@ -37,15 +37,17 @@ import {
 } from "./presetManager";
 import { createBitcrusher } from "./bitcrusher";
 import { NOTE_FREQS,
-   PAD_CONFIG,
-   PAD_BY_DRUM_ID,
-   PAD_BY_FULL_NOTE,
-   DRUM_VOICES,
-   PRESET_PATTERNS,
-   normalizePreset,
-   CONTROLLER_STORAGE_KEY,
-   CONTROL_TARGETS,
-   DEFAULT_BINDINGS,
+  PAD_CONFIG,
+  PAD_BY_DRUM_ID,
+  PAD_BY_FULL_NOTE,
+  DRUM_VOICES,
+  PRESET_PATTERNS,
+  normalizePreset,
+  CONTROLLER_STORAGE_KEY,
+  CONTROL_TARGETS,
+  DEFAULT_BINDINGS,
+  DRUM_KITS,
+  KIT_FLAVORS
   } from "./constant.js";
 /**
  * BOSS DR-202 Dr. Groove (1998) Emulator
@@ -75,6 +77,13 @@ class DR202AudioEngine {
     this.bassPan = 50;
     this.drumPanner = null;
     this.bassPanner = null;
+    this.partKitTypes = {
+      KICK: "dr202",
+      SNARE: "dr202",
+      HATS: "dr202",
+      PERC: "dr202",
+    };
+    this.customSamples = new Map(); // id -> AudioBuffer
   }
 
   init() {
@@ -115,6 +124,9 @@ class DR202AudioEngine {
       this.drumPanner.connect(this.masterFilter);
       this.bassPanner.connect(this.masterFilter);
       this.updatePanParams();
+
+      this.customSamples = new Map();
+      this.usePercSample = true;
       // Pre-generate 2 seconds of white noise for snares, hats, claps
       const bufferSize = this.ctx.sampleRate * 2;
       this.noiseBuffer = this.ctx.createBuffer(
@@ -165,6 +177,73 @@ class DR202AudioEngine {
     }
   }
 
+  setPartKitTypes(nextTypes) {
+    if (nextTypes && typeof nextTypes === "object") {
+      this.partKitTypes = { ...this.partKitTypes, ...nextTypes };
+    }
+  }
+
+  setUsePercSample(enabled) {
+    this.usePercSample = Boolean(enabled);
+  }
+
+  async loadSampleFromFile(sampleId, file) {
+    this.init();
+    const arrayBuffer = await file.arrayBuffer();
+    const audioBuffer = await new Promise((resolve, reject) => {
+      this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
+    });
+    this.customSamples.set(sampleId, audioBuffer);
+    return audioBuffer;
+  }
+
+  triggerSample(sampleId, time = null, velocity = 1.0, playbackRate = 1.0) {
+    this.init();
+    const buffer = this.customSamples.get(sampleId);
+    if (!buffer) return false;
+
+    const t = time || this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.setValueAtTime(Math.max(0.2, playbackRate), t);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(Math.max(0.01, velocity), t);
+
+    src.connect(gain);
+    gain.connect(this.drumPanner || this.masterGain);
+    src.start(t);
+    return true;
+  }
+  async loadSampleFromFile(sampleId, file) {
+    this.init();
+    const arrayBuffer = await file.arrayBuffer();
+    const audioBuffer = await new Promise((resolve, reject) => {
+      this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
+    });
+    this.customSamples.set(sampleId, audioBuffer);
+    return audioBuffer;
+  }
+
+  triggerSample(sampleId, time = null, velocity = 1.0, playbackRate = 1.0) {
+    this.init();
+    const buffer = this.customSamples.get(sampleId);
+    if (!buffer) return false;
+
+    const t = time || this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.setValueAtTime(Math.max(0.2, playbackRate), t);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(Math.max(0.01, velocity), t);
+
+    src.connect(gain);
+    gain.connect(this.drumPanner || this.masterGain);
+    src.start(t);
+    return true;
+  }
+
   updatePanParams() {
     if (!this.ctx) return;
     if (this.drumPanner) {
@@ -195,80 +274,91 @@ class DR202AudioEngine {
   }
 
   // Trigger a synthesized 90s Drum Sound
-  triggerDrum(drumId, time = null, velocity = 1.0) {
+triggerDrum(drumId, time = null, velocity = 1.0) {
     this.init();
     const t = time || this.ctx.currentTime;
     const decayScale = 0.45 + (this.decay / 100) * 1.15;
 
     switch (drumId) {
       case "kick":
-        this._synthKick(t, velocity, decayScale);
+        this._synthKick(t, velocity, decayScale, this.partKitTypes.KICK);
         break;
       case "snare":
-        this._synthSnare(t, velocity, decayScale, 195);
+        this._synthSnare(t, velocity, decayScale, 195, this.partKitTypes.SNARE);
         break;
       case "snare2":
-        this._synthSnare(t, velocity, decayScale * 0.85, 240);
+        this._synthSnare(t, velocity, decayScale * 0.85, 240, this.partKitTypes.SNARE);
         break;
       case "clap":
-        this._synthClap(t, velocity, decayScale);
+        this._synthClap(t, velocity, decayScale, this.partKitTypes.SNARE);
         break;
       case "rim":
-        this._synthRim(t, velocity);
+        this._synthRim(t, velocity, this.partKitTypes.SNARE);
         break;
       case "chh":
-        this._synthHiHat(t, velocity, 0.045 * decayScale, 7500);
+        this._synthHiHat(t, velocity, 0.045 * decayScale, 7500, this.partKitTypes.HATS);
         break;
       case "phh":
-        this._synthHiHat(t, velocity * 0.85, 0.075 * decayScale, 6800);
+        this._synthHiHat(t, velocity * 0.85, 0.075 * decayScale, 6800, this.partKitTypes.HATS);
         break;
       case "ohh":
-        this._synthHiHat(t, velocity, 0.34 * decayScale, 6500);
+        this._synthHiHat(t, velocity, 0.34 * decayScale, 6500, this.partKitTypes.HATS);
         break;
       case "tomLow":
-        this._synthTom(t, velocity, 95, 45, decayScale);
+        this._synthTom(t, velocity, 95, 45, decayScale, this.partKitTypes.PERC);
         break;
       case "tomMid":
-        this._synthTom(t, velocity, 145, 72, decayScale);
+        this._synthTom(t, velocity, 145, 72, decayScale, this.partKitTypes.PERC);
         break;
       case "tomHi":
-        this._synthTom(t, velocity, 210, 105, decayScale);
+        this._synthTom(t, velocity, 210, 105, decayScale, this.partKitTypes.PERC);
         break;
       case "crash":
-        this._synthCrash(t, velocity, decayScale);
+        this._synthCrash(t, velocity, decayScale, this.partKitTypes.HATS);
         break;
       case "perc":
-        this._synthPerc(t, velocity, decayScale);
+        if (this.usePercSample && this.triggerSample("perc", t, velocity, 1.0)) {
+          break;
+        }
+        this._synthPerc(t, velocity, decayScale, this.partKitTypes.PERC);
         break;
       default:
-        this._synthKick(t, velocity, decayScale);
+        this._synthKick(t, velocity, decayScale, this.partKitTypes.KICK);
     }
   }
+_synthKick(t, vel, decayScale, kitType = "dr202") {
+    const profiles = {
+      dr202:   { start: 145, mid: 48, end: 34, dur: 0.36, clickFreq: 950,  clickAmp: 0.55, type: "sine" },
+      tr808:   { start: 120, mid: 44, end: 28, dur: 0.58, clickFreq: 420,  clickAmp: 0.25, type: "sine" },
+      tr909:   { start: 175, mid: 56, end: 40, dur: 0.30, clickFreq: 1450, clickAmp: 0.85, type: "sine" },
+      electro: { start: 210, mid: 62, end: 36, dur: 0.26, clickFreq: 1800, clickAmp: 0.70, type: "triangle" },
+      lofi:    { start: 135, mid: 52, end: 38, dur: 0.24, clickFreq: 700,  clickAmp: 0.65, type: "triangle" },
+      dub:        { start: 110, mid: 40, end: 26, dur: 0.65, clickFreq: 320,  clickAmp: 0.20, type: "sine" },
+      industrial: { start: 240, mid: 70, end: 42, dur: 0.22, clickFreq: 2400, clickAmp: 0.95, type: "sawtooth" },
+    };
+    const p = profiles[kitType] || profiles.dr202;
 
-  _synthKick(t, vel, decayScale) {
-    // Sub body oscillator
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(145, t);
-    osc.frequency.exponentialRampToValueAtTime(48, t + 0.045);
-    osc.frequency.exponentialRampToValueAtTime(34, t + 0.32 * decayScale);
+    osc.type = p.type;
+    osc.frequency.setValueAtTime(p.start, t);
+    osc.frequency.exponentialRampToValueAtTime(p.mid, t + 0.045);
+    osc.frequency.exponentialRampToValueAtTime(p.end, t + p.dur * 0.9 * decayScale);
 
     gain.gain.setValueAtTime(1.15 * vel, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.36 * decayScale);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + p.dur * decayScale);
 
     osc.connect(gain);
     gain.connect(this.drumPanner);
     osc.start(t);
-    osc.stop(t + 0.38 * decayScale);
+    osc.stop(t + p.dur * decayScale + 0.02);
 
-    // Punchy 90s beater click
     const clickOsc = this.ctx.createOscillator();
     const clickGain = this.ctx.createGain();
     clickOsc.type = "triangle";
-    clickOsc.frequency.setValueAtTime(950, t);
+    clickOsc.frequency.setValueAtTime(p.clickFreq, t);
     clickOsc.frequency.exponentialRampToValueAtTime(90, t + 0.022);
-    clickGain.gain.setValueAtTime(0.55 * vel, t);
+    clickGain.gain.setValueAtTime(p.clickAmp * vel, t);
     clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
 
     clickOsc.connect(clickGain);
@@ -277,13 +367,16 @@ class DR202AudioEngine {
     clickOsc.stop(t + 0.03);
   }
 
-  _synthSnare(t, vel, decayScale, baseFreq) {
-    // Drum shell tone
+  _synthSnare(t, vel, decayScale, baseFreq, kitType = "dr202") {
+    const pitchMult = kitType === "tr808" ? 0.88 : kitType === "tr909" ? 1.08 : kitType === "electro" ? 1.25 : 1.0;
+    const hpFreq = kitType === "lofi" ? 750 : kitType === "tr909" ? 1350 : 1100;
+    const tail = kitType === "tr808" ? 0.17 : kitType === "tr909" ? 0.24 : 0.21;
+
     const osc = this.ctx.createOscillator();
     const oscGain = this.ctx.createGain();
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(baseFreq * 1.4, t);
-    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.75, t + 0.08);
+    osc.type = kitType === "electro" ? "sawtooth" : "triangle";
+    osc.frequency.setValueAtTime(baseFreq * 1.4 * pitchMult, t);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.75 * pitchMult, t + 0.08);
     oscGain.gain.setValueAtTime(0.65 * vel, t);
     oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.14 * decayScale);
 
@@ -292,36 +385,111 @@ class DR202AudioEngine {
     osc.start(t);
     osc.stop(t + 0.15 * decayScale);
 
-    // Snare wire crisp noise
     const noise = this.ctx.createBufferSource();
     noise.buffer = this.noiseBuffer;
 
     const filter = this.ctx.createBiquadFilter();
-    filter.type = "highpass";
-    filter.frequency.setValueAtTime(1100, t);
+    filter.type = kitType === "lofi" ? "bandpass" : "highpass";
+    filter.frequency.setValueAtTime(hpFreq, t);
 
     const noiseGain = this.ctx.createGain();
     noiseGain.gain.setValueAtTime(0.8 * vel, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.21 * decayScale);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + tail * decayScale);
 
     noise.connect(filter);
     filter.connect(noiseGain);
     noiseGain.connect(this.drumPanner);
     noise.start(t);
-    noise.stop(t + 0.22 * decayScale);
+    noise.stop(t + tail * decayScale + 0.02);
   }
 
-  _synthClap(t, vel, decayScale) {
+  _synthHiHat(t, vel, duration, hpFreq, kitType = "dr202") {
+    const mult = kitType === "tr808" ? 1.18 : kitType === "tr909" ? 0.92 : kitType === "lofi" ? 0.72 : 1.0;
+    const durMult = kitType === "tr808" ? 0.8 : kitType === "tr909" ? 1.15 : 1.0;
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(hpFreq * mult, t);
+
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(9800 * mult, t);
+    bp.Q.setValueAtTime(kitType === "electro" ? 3.2 : 1.2, t);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.55 * vel, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + duration * durMult);
+
+    noise.connect(hp);
+    hp.connect(bp);
+    bp.connect(gain);
+    gain.connect(this.drumPanner);
+
+    noise.start(t);
+    noise.stop(t + duration * durMult + 0.01);
+  }
+
+  _synthTom(t, vel, startFreq, endFreq, decayScale, kitType = "dr202") {
+    const mult = kitType === "tr808" ? 0.85 : kitType === "electro" ? 1.35 : 1.0;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = kitType === "electro" ? "triangle" : "sine";
+    osc.frequency.setValueAtTime(startFreq * mult, t);
+    osc.frequency.exponentialRampToValueAtTime(endFreq * mult, t + 0.18 * decayScale);
+
+    gain.gain.setValueAtTime(0.85 * vel, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.24 * decayScale);
+
+    osc.connect(gain);
+    gain.connect(this.drumPanner);
+    osc.start(t);
+    osc.stop(t + 0.26 * decayScale);
+  }
+
+  _synthPerc(t, vel, decayScale, kitType = "dr202") {
+    const mult = kitType === "tr808" ? 1.0 : kitType === "tr909" ? 1.25 : kitType === "electro" ? 1.55 : 0.82;
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const bp = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc1.type = kitType === "tr808" ? "triangle" : "square";
+    osc2.type = "square";
+    osc1.frequency.setValueAtTime(540 * mult, t);
+    osc2.frequency.setValueAtTime(810 * mult, t);
+
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(900 * mult, t);
+    bp.Q.setValueAtTime(2.5, t);
+
+    gain.gain.setValueAtTime(0.45 * vel, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16 * decayScale);
+
+    osc1.connect(bp);
+    osc2.connect(bp);
+    bp.connect(gain);
+    gain.connect(this.drumPanner);
+
+    osc1.start(t);
+    osc2.start(t);
+    osc1.stop(t + 0.18 * decayScale);
+    osc2.stop(t + 0.18 * decayScale);
+  }
+
+  _synthClap(t, vel, decayScale, kitType = "dr202") {
+    const freq = kitType === "tr909" ? 1650 : kitType === "lofi" ? 1150 : 1450;
     const noise = this.ctx.createBufferSource();
     noise.buffer = this.noiseBuffer;
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = "bandpass";
-    filter.frequency.setValueAtTime(1450, t);
+    filter.frequency.setValueAtTime(freq, t);
     filter.Q.setValueAtTime(1.8, t);
 
     const gain = this.ctx.createGain();
-    // Classic 3-burst clap envelope + tail
     gain.gain.setValueAtTime(0.001, t);
     gain.gain.linearRampToValueAtTime(0.85 * vel, t + 0.005);
     gain.gain.linearRampToValueAtTime(0.15 * vel, t + 0.014);
@@ -337,15 +505,16 @@ class DR202AudioEngine {
     noise.stop(t + 0.26 * decayScale);
   }
 
-  _synthRim(t, vel) {
+  _synthRim(t, vel, kitType = "dr202") {
+    const pitchMult = kitType === "tr808" ? 0.9 : kitType === "electro" ? 1.3 : 1.0;
     const osc1 = this.ctx.createOscillator();
     const osc2 = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
     osc1.type = "triangle";
     osc2.type = "sine";
-    osc1.frequency.setValueAtTime(480, t);
-    osc2.frequency.setValueAtTime(1680, t);
+    osc1.frequency.setValueAtTime(480 * pitchMult, t);
+    osc2.frequency.setValueAtTime(1680 * pitchMult, t);
 
     gain.gain.setValueAtTime(0.75 * vel, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.038);
@@ -360,55 +529,14 @@ class DR202AudioEngine {
     osc2.stop(t + 0.042);
   }
 
-  _synthHiHat(t, vel, duration, hpFreq) {
+  _synthCrash(t, vel, decayScale, kitType = "dr202") {
+    const hpFreq = kitType === "tr909" ? 5600 : kitType === "lofi" ? 3400 : 4800;
     const noise = this.ctx.createBufferSource();
     noise.buffer = this.noiseBuffer;
 
     const hp = this.ctx.createBiquadFilter();
     hp.type = "highpass";
     hp.frequency.setValueAtTime(hpFreq, t);
-
-    const bp = this.ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.setValueAtTime(9800, t);
-    bp.Q.setValueAtTime(1.2, t);
-
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.55 * vel, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
-
-    noise.connect(hp);
-    hp.connect(bp);
-    bp.connect(gain);
-    gain.connect(this.drumPanner);
-
-    noise.start(t);
-    noise.stop(t + duration + 0.01);
-  }
-
-  _synthTom(t, vel, startFreq, endFreq, decayScale) {
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(startFreq, t);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, t + 0.18 * decayScale);
-
-    gain.gain.setValueAtTime(0.85 * vel, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.24 * decayScale);
-
-    osc.connect(gain);
-    gain.connect(this.drumPanner);
-    osc.start(t);
-    osc.stop(t + 0.26 * decayScale);
-  }
-
-  _synthCrash(t, vel, decayScale) {
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = this.noiseBuffer;
-
-    const hp = this.ctx.createBiquadFilter();
-    hp.type = "highpass";
-    hp.frequency.setValueAtTime(4800, t);
 
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(0.6 * vel, t);
@@ -419,36 +547,6 @@ class DR202AudioEngine {
     gain.connect(this.drumPanner);
     noise.start(t);
     noise.stop(t + 0.8 * decayScale);
-  }
-
-  _synthPerc(t, vel, decayScale) {
-    // Classic 90s FM/Cowbell-ish metallic perc
-    const osc1 = this.ctx.createOscillator();
-    const osc2 = this.ctx.createOscillator();
-    const bp = this.ctx.createBiquadFilter();
-    const gain = this.ctx.createGain();
-
-    osc1.type = "square";
-    osc2.type = "square";
-    osc1.frequency.setValueAtTime(540, t);
-    osc2.frequency.setValueAtTime(810, t);
-
-    bp.type = "bandpass";
-    bp.frequency.setValueAtTime(900, t);
-    bp.Q.setValueAtTime(2.5, t);
-
-    gain.gain.setValueAtTime(0.45 * vel, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16 * decayScale);
-
-    osc1.connect(bp);
-    osc2.connect(bp);
-    bp.connect(gain);
-    gain.connect(this.drumPanner);
-
-    osc1.start(t);
-    osc2.start(t);
-    osc1.stop(t + 0.18 * decayScale);
-    osc2.stop(t + 0.18 * decayScale);
   }
 
   // Trigger a fat 90s DR-202 Bass Synth note
@@ -787,7 +885,71 @@ export default function App() {
     BASS: false,
   });
   const [soloPart, setSoloPart] = useState(null);
+// --- KITS & TYPES DE PERCUSSIONS (GLOBAL OU UNITAIRE PAR GROUPE) ---
+  const [selectedKitId, setSelectedKitId] = useState("dr202");
+  const [partKitTypes, setPartKitTypes] = useState({
+    KICK: "dr202",
+    SNARE: "dr202",
+    HATS: "dr202",
+    PERC: "dr202",
+  });
 
+  useEffect(() => {
+    audioEngine.setPartKitTypes(partKitTypes);
+  }, [partKitTypes]);
+
+  // Change tout le kit d'un coup depuis le Mixer
+  const handleSelectGlobalKit = (kitId) => {
+    const found = DRUM_KITS.find((k) => k.id === kitId);
+    if (!found) return;
+    setSelectedKitId(kitId);
+    setPartKitTypes({ ...found.mapping });
+    setLastTriggeredLabel(`KIT ${found.id.toUpperCase()}`);
+  };
+
+  // Change unitairement le type d'une seule tranche (KICK, SNARE, HATS ou PERC)
+  const handleChangeSinglePartType = (group, nextFlavor) => {
+    setSelectedKitId("custom");
+    setPartKitTypes((prev) => ({
+      ...prev,
+      [group]: nextFlavor,
+    }));
+    setLastTriggeredLabel(`${group}:${nextFlavor.toUpperCase()}`);
+  };
+
+  // Clic rapide sur le badge d'une tranche pour cycler entre les types
+  const handleCycleSinglePartType = (group) => {
+    const current = partKitTypes[group] || "dr202";
+    const nextIdx = (KIT_FLAVORS.indexOf(current) + 1) % KIT_FLAVORS.length;
+    handleChangeSinglePartType(group, KIT_FLAVORS[nextIdx]);
+  };
+
+  // --- SAMPLE EXTERNE SUR LA PISTE PERC (OPTION A) ---
+  const [loadedSampleName, setLoadedSampleName] = useState("");
+  const [usePercSample, setUsePercSample] = useState(true);
+  const sampleFileInputRef = useRef(null);
+
+  useEffect(() => {
+    audioEngine.setUsePercSample(usePercSample);
+  }, [usePercSample]);
+
+  const handleImportAudioSample = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      await audioEngine.loadSampleFromFile("perc", file);
+      setLoadedSampleName(file.name);
+      setUsePercSample(true);
+      setSelectedDrumVoice("perc");
+      setLastTriggeredLabel("SMP LOADED");
+      audioEngine.triggerSample("perc");
+    } catch (err) {
+      alert(`Erreur chargement audio : ${err.message}`);
+    } finally {
+      e.target.value = "";
+    }
+  };
+  
   // Visual LED feedback for triggered pads
   const [activePads, setActivePads] = useState({});
   const [lastTriggeredLabel, setLastTriggeredLabel] = useState("READY");
@@ -1347,6 +1509,7 @@ export default function App() {
     }
   };
   
+
   // Importer un preset unique ou une bibliothèque complète (.json) dans My Preset Store
   const handleImportToStore = async (e) => {
     const file = e.target.files?.[0];
@@ -1994,7 +2157,7 @@ export default function App() {
                 target='_blank'
                 rel='noopener noreferrer'
                 title='If you like my work and you want to improve this project support me ❤️‍🔥'
-                className="className='text-xs sm:text-sm font-extrabold tracking-widest uppercase text-orange-700 bg-zinc-900/10 px-2 py-0.5 rounded'>"
+                className='text-xs sm:text-sm font-extrabold tracking-widest uppercase text-orange-700 bg-zinc-900/10 px-2 py-0.5 rounded'              
               >
                 Support Labrikman 🧱
               </a>
@@ -2367,6 +2530,21 @@ export default function App() {
               />
             </div>
             <button
+              type="button"
+              onClick={() => sampleFileInputRef.current?.click()}
+              title="Charger un fichier audio (.wav, .mp3, .ogg) sur la piste PERC"
+              className="min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-cyan-300 border border-zinc-900 shadow active:translate-y-0.5 cursor-pointer"
+            >
+              {loadedSampleName ? `SMP: ${loadedSampleName.slice(0, 10)}` : "LOAD AUDIO"}
+            </button>
+            <input
+              ref={sampleFileInputRef}
+              type="file"
+              accept="audio/*,.wav,.mp3,.ogg"
+              onChange={handleImportAudioSample}
+              className="hidden"
+            />
+            <button
               onClick={handleRandomizePreset}
               title='Générer un pattern complet aléatoire'
               className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-purple-700 hover:bg-purple-600 text-white border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
@@ -2388,13 +2566,34 @@ export default function App() {
               <Shuffle className='w-3.5 h-3.5' /> RND BASS
             </button>
             {/* Part Mute / Solo Strip */}
+{/* Part Mute / Solo & Kit Selector Strip */}
             <div className='flex flex-wrap items-center gap-1.5'>
-              <span className='text-[10px] font-black uppercase tracking-wider text-zinc-400 mr-1'>
-                Part Mixer:
-              </span>
+              <div className='flex items-center gap-1 bg-zinc-900 rounded-lg px-2 py-1 border border-zinc-700'>
+                <span className='text-[9px] font-black uppercase tracking-wider text-amber-400'>
+                  Kit:
+                </span>
+                <select
+                  value={selectedKitId}
+                  onChange={(e) => handleSelectGlobalKit(e.target.value)}
+                  title='Changer tout le set de percussions à la volée'
+                  className='bg-zinc-950 text-zinc-100 text-[10px] font-bold px-1.5 py-0.5 rounded border border-zinc-700 focus:outline-none focus:border-amber-500 cursor-pointer'
+                >
+                  {DRUM_KITS.map((kit) => (
+                    <option key={kit.id} value={kit.id}>
+                      {kit.label}
+                    </option>
+                  ))}
+                  {selectedKitId === "custom" && (
+                    <option value='custom'>Custom Mix</option>
+                  )}
+                </select>
+              </div>
+
               {["KICK", "SNARE", "HATS", "PERC", "BASS"].map((group) => {
                 const muted = mutedParts[group];
                 const soloed = soloPart === group;
+                const currentFlavor = partKitTypes[group];
+
                 return (
                   <div
                     key={group}
@@ -2411,6 +2610,26 @@ export default function App() {
                     >
                       {group}
                     </button>
+
+                    {/* Sélecteur unitaire du type de percussion pour KICK, SNARE, HATS, PERC */}
+                    {group !== "BASS" && (
+                      <select
+                        value={currentFlavor}
+                        onChange={(e) =>
+                          handleChangeSinglePartType(group, e.target.value)
+                        }
+                        onDoubleClick={() => handleCycleSinglePartType(group)}
+                        title={`Type de son pour ${group} (à la volée)`}
+                        className='bg-zinc-950 text-amber-300 text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer'
+                      >
+                        {KIT_FLAVORS.map((flavor) => (
+                          <option key={flavor} value={flavor}>
+                            {flavor}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
                     <button
                       onClick={() => toggleSolo(group)}
                       title={`Solo ${group}`}
