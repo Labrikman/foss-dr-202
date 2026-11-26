@@ -2544,38 +2544,40 @@ export default function App() {
 
             <div className='grid grid-cols-1 lg:grid-cols-1 gap-2'>
               {/* --- STORE PERSONNEL (LOCALSTORAGE) --- */}
-              <div className='flex items-center justify-between'>
-                  <span className='text-[9px] font-black uppercase tracking-wider text-amber-400'>
-                    My Preset Store ({userPresets.length})
-                  </span>
-                  <div className='flex items-center gap-2'>
-                    <button
-                      type='button'
-                      onClick={() => storeFileInputRef.current?.click()}
-                      title='Importer un preset ou une bibliothèque (.json) dans le Store'
-                      className='text-[9px] font-bold text-amber-400 hover:underline cursor-pointer'
-                    >
-                      IMPORT (.JSON)
-                    </button>
-                    {userPresets.length > 0 && (
+              <div className='bg-zinc-900/90 border border-zinc-700 rounded-lg p-2 flex flex-col gap-1.5 mt-1'>
+
+                <div className='flex items-center justify-between'>
+                    <span className='text-[9px] font-black uppercase tracking-wider text-amber-400'>
+                      My Preset Store ({userPresets.length})
+                    </span>
+                    <div className='flex items-center gap-2'>
                       <button
                         type='button'
-                        onClick={exportAllUserPresetsToFile}
-                        title='Télécharger toute la bibliothèque personnelle (.json)'
-                        className='text-[9px] font-bold text-emerald-400 hover:underline cursor-pointer'
+                        onClick={() => storeFileInputRef.current?.click()}
+                        title='Importer un preset ou une bibliothèque (.json) dans le Store'
+                        className='text-[9px] font-bold text-amber-400 hover:underline cursor-pointer'
                       >
-                        EXPORT ALL
+                        IMPORT (.JSON)
                       </button>
-                    )}
-                    <input
-                      ref={storeFileInputRef}
-                      type='file'
-                      accept='.json,application/json'
-                      onChange={handleImportToStore}
-                      className='hidden'
-                    />
+                      {userPresets.length > 0 && (
+                        <button
+                          type='button'
+                          onClick={exportAllUserPresetsToFile}
+                          title='Télécharger toute la bibliothèque personnelle (.json)'
+                          className='text-[9px] font-bold text-emerald-400 hover:underline cursor-pointer'
+                        >
+                          EXPORT ALL
+                        </button>
+                      )}
+                      <input
+                        ref={storeFileInputRef}
+                        type='file'
+                        accept='.json,application/json'
+                        onChange={handleImportToStore}
+                        className='hidden'
+                      />
+                    </div>
                   </div>
-                
 
                 {/* Ligne 1 : Nommer + Sauvegarder dans le navigateur */}
                 <div className='flex items-center gap-1'>
