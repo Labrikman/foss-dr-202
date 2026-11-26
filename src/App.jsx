@@ -1973,7 +1973,6 @@ export default function App() {
               </span>
             </div>
           </div>
-
           <div className='flex items-center gap-3'>
             <span className='hidden md:inline-block text-[10px] font-bold uppercase tracking-widest text-zinc-700'>
               Rhythm &amp; Bass Machine • 1998 PCM/Synth Engine
@@ -1989,6 +1988,16 @@ export default function App() {
               <span className='text-[10px] font-mono font-bold text-zinc-300'>
                 {audioUnlocked ? "DC IN 9V ON" : "STANDBY"}
               </span>
+                        {/* BOUTON DONATION (Ko-fi / Buy Me a Coffee) */}
+              <a
+                href='https://ko-fi.com/labrikman'
+                target='_blank'
+                rel='noopener noreferrer'
+                title='If you like my work and you want to improve this project support me ❤️‍🔥'
+                className="className='text-xs sm:text-sm font-extrabold tracking-widest uppercase text-orange-700 bg-zinc-900/10 px-2 py-0.5 rounded'>"
+              >
+                Support Labrikman 🧱
+              </a>
             </div>
           </div>
         </div>
