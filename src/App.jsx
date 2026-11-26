@@ -21,7 +21,6 @@ import {
   Power,
   Shuffle,
 } from "lucide-react";
-
 import {
   exportPresetToFile,
   importPresetFromFile,
@@ -29,6 +28,7 @@ import {
   saveUserPresetToStorage,
   deleteUserPresetFromStorage,
   exportAllUserPresetsToFile,
+  importUserPresetsToStorage,
   getSavedUserBanks,
   saveUserBankToStorage,
   deleteUserBankFromStorage,
@@ -776,6 +776,7 @@ export default function App() {
   const [userPresets, setUserPresets] = useState(() => getSavedUserPresets());
   const [selectedUserPresetUid, setSelectedUserPresetUid] = useState("");
   const [customPresetName, setCustomPresetName] = useState("");
+  const storeFileInputRef = useRef(null);
 
   // Part Mutes & Solos
   const [mutedParts, setMutedParts] = useState({
@@ -1342,6 +1343,28 @@ export default function App() {
       alert(`Import Error: ${err.message}`);
     } finally {
       // Reset input so the same file can be re-imported if needed
+      e.target.value = "";
+    }
+  };
+  
+  // Importer un preset unique ou une bibliothèque complète (.json) dans My Preset Store
+  const handleImportToStore = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const { presets: updated, importedCount } =
+        await importUserPresetsToStorage(file);
+      setUserPresets(updated);
+      if (updated[0]?.uid) {
+        setSelectedUserPresetUid(updated[0].uid);
+      }
+      setLastTriggeredLabel(
+        importedCount > 1 ? `IMP ${importedCount} PRS` : "STORE IMP"
+      );
+    } catch (err) {
+      alert(`Erreur d'import Store : ${err.message}`);
+    } finally {
       e.target.value = "";
     }
   };
@@ -2521,21 +2544,37 @@ export default function App() {
 
             <div className='grid grid-cols-1 lg:grid-cols-1 gap-2'>
               {/* --- STORE PERSONNEL (LOCALSTORAGE) --- */}
-              <div className='bg-zinc-900/90 border border-zinc-700 rounded-lg p-2 flex flex-col gap-1.5 mt-1'>
-                <div className='flex items-center justify-between'>
+              <div className='flex items-center justify-between'>
                   <span className='text-[9px] font-black uppercase tracking-wider text-amber-400'>
                     My Preset Store ({userPresets.length})
                   </span>
-                  {userPresets.length > 0 && (
+                  <div className='flex items-center gap-2'>
                     <button
                       type='button'
-                      onClick={exportAllUserPresetsToFile}
-                      title='Télécharger toute la bibliothèque personnelle (.json)'
-                      className='text-[9px] font-bold text-emerald-400 hover:underline cursor-pointer'
+                      onClick={() => storeFileInputRef.current?.click()}
+                      title='Importer un preset ou une bibliothèque (.json) dans le Store'
+                      className='text-[9px] font-bold text-amber-400 hover:underline cursor-pointer'
                     >
-                      EXPORT ALL (.JSON)
+                      IMPORT (.JSON)
                     </button>
-                  )}
+                    {userPresets.length > 0 && (
+                      <button
+                        type='button'
+                        onClick={exportAllUserPresetsToFile}
+                        title='Télécharger toute la bibliothèque personnelle (.json)'
+                        className='text-[9px] font-bold text-emerald-400 hover:underline cursor-pointer'
+                      >
+                        EXPORT ALL
+                      </button>
+                    )}
+                    <input
+                      ref={storeFileInputRef}
+                      type='file'
+                      accept='.json,application/json'
+                      onChange={handleImportToStore}
+                      className='hidden'
+                    />
+                  </div>
                 </div>
 
                 {/* Ligne 1 : Nommer + Sauvegarder dans le navigateur */}
