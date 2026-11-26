@@ -2575,7 +2575,7 @@ export default function App() {
                       className='hidden'
                     />
                   </div>
-                </div>
+                
 
                 {/* Ligne 1 : Nommer + Sauvegarder dans le navigateur */}
                 <div className='flex items-center gap-1'>
