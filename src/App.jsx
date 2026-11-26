@@ -3130,7 +3130,152 @@ export default function App() {
               </div>
             </div>
           </div>
+          {/* --- MODE CHAÎNE / SONG (PROGRAMMATION DES BANK SLOTS) --- */}
+                    <div className='md:col-span-12 bg-zinc-900 rounded-2xl p-2 sm:p-3 lg:p-3 shadow-[inset_0_3px_10px_rgba(0,0,0,0.9)] border-2 border-zinc-700 flex flex-col justify-between'>
 
+          <div className='bg-zinc-900/90 border border-zinc-700 rounded-lg p-2 flex flex-col gap-1.5 mt-2'>
+            <div className='flex items-center justify-between gap-1'>
+              <span className='text-[9px] font-black uppercase tracking-wider text-emerald-400'>
+                Song Chain ({songChain.length} steps)
+              </span>
+
+              <div className='flex items-center gap-1'>
+                <button
+                  type='button'
+                  onClick={() => {
+                    const nextMode = !isSongMode;
+                    setIsSongMode(nextMode);
+                    if (nextMode && songChain.length > 0) {
+                      startSongFromBeginning();
+                    }
+                    setLastTriggeredLabel(nextMode ? "CHAIN ON" : "CHAIN OFF");
+                  }}
+                  className={`px-2 py-0.5 rounded text-[9px] font-black uppercase cursor-pointer border ${
+                    isSongMode
+                      ? "bg-emerald-500 text-zinc-950 border-emerald-300"
+                      : "bg-zinc-800 text-zinc-300 border-zinc-600"
+                  }`}
+                >
+                  {isSongMode ? "CHAIN: ON" : "CHAIN: OFF"}
+                </button>
+
+                <button
+                  type='button'
+                  onClick={() =>
+                    setSongChain((prev) => [
+                      ...prev,
+                      {
+                        id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+                        slotIndex: prev.length % 8,
+                        repeats: 2,
+                      },
+                    ])
+                  }
+                  title='Ajouter une étape à la chaîne'
+                  className='px-2 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500 hover:bg-amber-400 text-zinc-950 cursor-pointer'
+                >
+                  + STEP
+                </button>
+              </div>
+            </div>
+
+            {/* Liste des blocs de la chaîne */}
+            <div className='max-h-32 overflow-y-auto flex flex-wrap items-center gap-1 pr-0.5'>
+              {songChain.length === 0 ? (
+                <span className='text-[9px] font-mono text-zinc-500 py-1 text-center'>
+                  Clique sur + STEP pour chaîner des Bank Slots
+                </span>
+              ) : (
+                songChain.map((block, idx) => {
+                  const isCurrentBlock = isSongMode && currentChainStep === idx;
+                  const assignedPatIdx = bankSlots[block.slotIndex] ?? 0;
+                  const assignedPatName =
+                    patterns[assignedPatIdx]?.name || `#${assignedPatIdx + 1}`;
+
+                  return (
+                    <div
+                      key={block.id}
+                      className={`flex items-center justify-between gap-1 px-1.5 py-1 rounded border text-[9px] font-mono ${
+                        isCurrentBlock
+                          ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
+                          : "bg-zinc-950 border-zinc-800 text-zinc-300"
+                      }`}
+                    >
+                      <span className='font-black w-5 text-zinc-400'>
+                        {idx + 1}.
+                      </span>
+
+                      {/* Choix du Bank Slot (1..8) */}
+                      <select
+                        value={block.slotIndex}
+                        onChange={(e) => {
+                          const nextSlot = Number(e.target.value);
+                          setSongChain((prev) =>
+                            prev.map((item, i) =>
+                              i === idx ? { ...item, slotIndex: nextSlot } : item
+                            )
+                          );
+                        }}
+                        className='flex-1 min-w-0 bg-zinc-900 text-zinc-100 text-[9px] px-1 py-0.5 rounded border border-zinc-700 focus:outline-none focus:border-emerald-400'
+                      >
+                        {Array.from({ length: 8 }, (_, sIdx) => {
+                          const pIdx = bankSlots[sIdx] ?? 0;
+                          const pName = patterns[pIdx]?.name || `#${pIdx + 1}`;
+                          return (
+                            <option key={sIdx} value={sIdx}>
+                              SLOT {sIdx + 1} ({pName.slice(0, 8)})
+                            </option>
+                          );
+                        })}
+                      </select>
+
+                      {/* Nombre de répétitions (mesures de 16 pas) */}
+                      <div className='flex items-center gap-0.5'>
+                        <span className='text-zinc-500'>x</span>
+                        <input
+                          type='number'
+                          min={1}
+                          max={32}
+                          value={block.repeats}
+                          onChange={(e) => {
+                            const val = Math.max(
+                              1,
+                              Math.min(32, Number(e.target.value) || 1)
+                            );
+                            setSongChain((prev) =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, repeats: val } : item
+                              )
+                            );
+                          }}
+                          className='w-9 bg-zinc-900 text-amber-400 text-center font-bold px-1 py-0.5 rounded border border-zinc-700 focus:outline-none'
+                        />
+                      </div>
+
+                      {/* Indicateur de boucle en cours ou bouton supprimer */}
+                      {isCurrentBlock ? (
+                        <span className='text-[8px] font-black text-emerald-400 px-1'>
+                          {currentRepeatCount + 1}/{block.repeats}
+                        </span>
+                      ) : (
+                        <button
+                          type='button'
+                          onClick={() =>
+                            setSongChain((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          title={`Supprimer l'étape (${assignedPatName})`}
+                          className='px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-red-700 text-red-400 hover:text-white font-bold cursor-pointer'
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          </div>
           {/* 13 RUBBERIZED CHROMATIC TRIGGER PADS (Full-width bottom row) */}
           <div className='md:col-span-12 bg-zinc-900 rounded-2xl p-2 sm:p-3 lg:p-3 shadow-[inset_0_3px_10px_rgba(0,0,0,0.9)] border-2 border-zinc-700 flex flex-col justify-between'>
             <div className='flex items-center justify-between mb-3'>
