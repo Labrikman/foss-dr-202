@@ -6,6 +6,16 @@ import React, {
   useMemo,
 } from "react";
 import {
+  ALL_LANE_IDS,
+  buildDefaultKitLanes,
+  getSavedCustomKits,
+  saveCustomKitToStorage,
+  deleteCustomKitFromStorage,
+  exportKitToFile,
+  importKitFromFile,
+  fileToDataUrl,
+} from "./kitManager";
+import {
   Play,
   Square,
   Circle,
@@ -77,13 +87,8 @@ class DR202AudioEngine {
     this.bassPan = 50;
     this.drumPanner = null;
     this.bassPanner = null;
-    this.partKitTypes = {
-      KICK: "dr202",
-      SNARE: "dr202",
-      HATS: "dr202",
-      PERC: "dr202",
-    };
-    this.customSamples = new Map(); // id -> AudioBuffer
+    this.laneConfigs = {}; // laneId -> { synthType, useSample, pitch, gain, trimStart }
+    this.customSamples = new Map(); // laneId -> AudioBuffer
   }
 
   init() {
@@ -177,16 +182,16 @@ class DR202AudioEngine {
     }
   }
 
-  setPartKitTypes(nextTypes) {
-    if (nextTypes && typeof nextTypes === "object") {
-      this.partKitTypes = { ...this.partKitTypes, ...nextTypes };
-    }
-  }
-
-  setUsePercSample(enabled) {
+setUsePercSample(enabled) {
     this.usePercSample = Boolean(enabled);
   }
 
+  setLaneConfigs(configs) {
+    if (configs && typeof configs === "object") {
+      this.laneConfigs = configs;
+    }
+  }
+
   async loadSampleFromFile(sampleId, file) {
     this.init();
     const arrayBuffer = await file.arrayBuffer();
@@ -197,50 +202,55 @@ class DR202AudioEngine {
     return audioBuffer;
   }
 
-  triggerSample(sampleId, time = null, velocity = 1.0, playbackRate = 1.0) {
+  async loadSampleFromDataUrl(laneId, dataUrl) {
+    if (!dataUrl) {
+      this.customSamples.delete(laneId);
+      return null;
+    }
     this.init();
-    const buffer = this.customSamples.get(sampleId);
-    if (!buffer) return false;
-
-    const t = time || this.ctx.currentTime;
-    const src = this.ctx.createBufferSource();
-    src.buffer = buffer;
-    src.playbackRate.setValueAtTime(Math.max(0.2, playbackRate), t);
-
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(Math.max(0.01, velocity), t);
-
-    src.connect(gain);
-    gain.connect(this.drumPanner || this.masterGain);
-    src.start(t);
-    return true;
-  }
-  async loadSampleFromFile(sampleId, file) {
-    this.init();
-    const arrayBuffer = await file.arrayBuffer();
+    const res = await fetch(dataUrl);
+    const arrayBuffer = await res.arrayBuffer();
     const audioBuffer = await new Promise((resolve, reject) => {
       this.ctx.decodeAudioData(arrayBuffer, resolve, reject);
     });
-    this.customSamples.set(sampleId, audioBuffer);
+    this.customSamples.set(laneId, audioBuffer);
     return audioBuffer;
   }
 
-  triggerSample(sampleId, time = null, velocity = 1.0, playbackRate = 1.0) {
+  triggerSample(laneId, time = null, velocity = 1.0, playbackRateOverride = null) {
     this.init();
-    const buffer = this.customSamples.get(sampleId);
+    const buffer = this.customSamples.get(laneId);
     if (!buffer) return false;
+
+    const cfg = this.laneConfigs[laneId];
+    // Si configuré via laneConfigs, on respecte cfg.useSample ; sinon on vérifie usePercSample
+    if (cfg) {
+      if (!cfg.useSample) return false;
+    } else if (laneId === "perc" && !this.usePercSample) {
+      return false;
+    }
 
     const t = time || this.ctx.currentTime;
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
-    src.playbackRate.setValueAtTime(Math.max(0.2, playbackRate), t);
 
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(Math.max(0.01, velocity), t);
+    const semitones = Number(cfg?.pitch) || 0;
+    const rate =
+      playbackRateOverride !== null
+        ? playbackRateOverride
+        : Math.pow(2, semitones / 12);
+    src.playbackRate.setValueAtTime(Math.max(0.15, Math.min(4, rate)), t);
 
-    src.connect(gain);
-    gain.connect(this.drumPanner || this.masterGain);
-    src.start(t);
+    const laneGain = ((Number(cfg?.gain) ?? 100) / 100) * velocity;
+    const gainNode = this.ctx.createGain();
+    gainNode.gain.setValueAtTime(Math.max(0.001, laneGain), t);
+
+    src.connect(gainNode);
+    gainNode.connect(this.drumPanner || this.masterGain);
+
+    const trimRatio = Math.max(0, Math.min(0.9, (Number(cfg?.trimStart) || 0) / 100));
+    const offsetSec = buffer.duration * trimRatio;
+    src.start(t, offsetSec);
     return true;
   }
 
@@ -279,51 +289,57 @@ triggerDrum(drumId, time = null, velocity = 1.0) {
     const t = time || this.ctx.currentTime;
     const decayScale = 0.45 + (this.decay / 100) * 1.15;
 
+    // 1. Si un sample est actif sur cette lane, on le joue en priorité
+    if (this.triggerSample(drumId, t, velocity)) {
+      return;
+    }
+
+    // 2. Sinon on utilise le moteur de synthèse configuré pour cette lane précise
+    const laneSynth = this.laneConfigs[drumId]?.synthType || "dr202";
+    const laneGain = ((Number(this.laneConfigs[drumId]?.gain) ?? 100) / 100) * velocity;
+
     switch (drumId) {
       case "kick":
-        this._synthKick(t, velocity, decayScale, this.partKitTypes.KICK);
+        this._synthKick(t, laneGain, decayScale, laneSynth);
         break;
       case "snare":
-        this._synthSnare(t, velocity, decayScale, 195, this.partKitTypes.SNARE);
+        this._synthSnare(t, laneGain, decayScale, 195, laneSynth);
         break;
       case "snare2":
-        this._synthSnare(t, velocity, decayScale * 0.85, 240, this.partKitTypes.SNARE);
+        this._synthSnare(t, laneGain, decayScale * 0.85, 240, laneSynth);
         break;
       case "clap":
-        this._synthClap(t, velocity, decayScale, this.partKitTypes.SNARE);
+        this._synthClap(t, laneGain, decayScale, laneSynth);
         break;
       case "rim":
-        this._synthRim(t, velocity, this.partKitTypes.SNARE);
+        this._synthRim(t, laneGain, laneSynth);
         break;
       case "chh":
-        this._synthHiHat(t, velocity, 0.045 * decayScale, 7500, this.partKitTypes.HATS);
+        this._synthHiHat(t, laneGain, 0.045 * decayScale, 7500, laneSynth);
         break;
       case "phh":
-        this._synthHiHat(t, velocity * 0.85, 0.075 * decayScale, 6800, this.partKitTypes.HATS);
+        this._synthHiHat(t, laneGain * 0.85, 0.075 * decayScale, 6800, laneSynth);
         break;
       case "ohh":
-        this._synthHiHat(t, velocity, 0.34 * decayScale, 6500, this.partKitTypes.HATS);
+        this._synthHiHat(t, laneGain, 0.34 * decayScale, 6500, laneSynth);
         break;
       case "tomLow":
-        this._synthTom(t, velocity, 95, 45, decayScale, this.partKitTypes.PERC);
+        this._synthTom(t, laneGain, 95, 45, decayScale, laneSynth);
         break;
       case "tomMid":
-        this._synthTom(t, velocity, 145, 72, decayScale, this.partKitTypes.PERC);
+        this._synthTom(t, laneGain, 145, 72, decayScale, laneSynth);
         break;
       case "tomHi":
-        this._synthTom(t, velocity, 210, 105, decayScale, this.partKitTypes.PERC);
+        this._synthTom(t, laneGain, 210, 105, decayScale, laneSynth);
         break;
       case "crash":
-        this._synthCrash(t, velocity, decayScale, this.partKitTypes.HATS);
+        this._synthCrash(t, laneGain, decayScale, laneSynth);
         break;
       case "perc":
-        if (this.usePercSample && this.triggerSample("perc", t, velocity, 1.0)) {
-          break;
-        }
-        this._synthPerc(t, velocity, decayScale, this.partKitTypes.PERC);
+        this._synthPerc(t, laneGain, decayScale, laneSynth);
         break;
       default:
-        this._synthKick(t, velocity, decayScale, this.partKitTypes.KICK);
+        this._synthKick(t, laneGain, decayScale, laneSynth);
     }
   }
 _synthKick(t, vel, decayScale, kitType = "dr202") {
@@ -886,42 +902,127 @@ export default function App() {
   });
   const [soloPart, setSoloPart] = useState(null);
 // --- KITS & TYPES DE PERCUSSIONS (GLOBAL OU UNITAIRE PAR GROUPE) ---
+// --- KIT BUILDER COMPLET (TOUTES LES LANES + SAMPLES + STORE) ---
   const [selectedKitId, setSelectedKitId] = useState("dr202");
-  const [partKitTypes, setPartKitTypes] = useState({
-    KICK: "dr202",
-    SNARE: "dr202",
-    HATS: "dr202",
-    PERC: "dr202",
-  });
+  const [laneConfigs, setLaneConfigs] = useState(() => buildDefaultKitLanes("dr202"));
+  const [customKits, setCustomKits] = useState(() => getSavedCustomKits());
+  const [selectedCustomKitUid, setSelectedCustomKitUid] = useState("");
+  const [customKitName, setCustomKitName] = useState("");
+  const laneSampleInputRef = useRef(null);
+  const kitFileInputRef = useRef(null);
 
   useEffect(() => {
-    audioEngine.setPartKitTypes(partKitTypes);
-  }, [partKitTypes]);
+    audioEngine.setLaneConfigs(laneConfigs);
+  }, [laneConfigs]);
 
-  // Change tout le kit d'un coup depuis le Mixer
+  // Applique un preset de kit global sur toutes les lanes (tout en gardant les samples si présents)
   const handleSelectGlobalKit = (kitId) => {
-    const found = DRUM_KITS.find((k) => k.id === kitId);
-    if (!found) return;
     setSelectedKitId(kitId);
-    setPartKitTypes({ ...found.mapping });
-    setLastTriggeredLabel(`KIT ${found.id.toUpperCase()}`);
+    setLaneConfigs((prev) => {
+      const next = { ...prev };
+      ALL_LANE_IDS.forEach((id) => {
+        next[id] = { ...next[id], synthType: kitId };
+      });
+      return next;
+    });
+    setLastTriggeredLabel(`KIT ${kitId.toUpperCase()}`);
   };
 
-  // Change unitairement le type d'une seule tranche (KICK, SNARE, HATS ou PERC)
-  const handleChangeSinglePartType = (group, nextFlavor) => {
+  // Met à jour un paramètre d'une lane précise (synthType, pitch, gain, trimStart, useSample)
+  const updateSingleLane = (laneId, patch) => {
     setSelectedKitId("custom");
-    setPartKitTypes((prev) => ({
+    setLaneConfigs((prev) => ({
       ...prev,
-      [group]: nextFlavor,
+      [laneId]: {
+        ...prev[laneId],
+        ...patch,
+      },
     }));
-    setLastTriggeredLabel(`${group}:${nextFlavor.toUpperCase()}`);
   };
 
-  // Clic rapide sur le badge d'une tranche pour cycler entre les types
-  const handleCycleSinglePartType = (group) => {
-    const current = partKitTypes[group] || "dr202";
-    const nextIdx = (KIT_FLAVORS.indexOf(current) + 1) % KIT_FLAVORS.length;
-    handleChangeSinglePartType(group, KIT_FLAVORS[nextIdx]);
+  // Upload d'un son sur la lane actuellement sélectionnée (selectedDrumVoice)
+  const handleUploadLaneSample = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const targetLane = selectedDrumVoice;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      await audioEngine.loadSampleFromDataUrl(targetLane, dataUrl);
+      updateSingleLane(targetLane, {
+        useSample: true,
+        sampleName: file.name,
+        sampleDataUrl: dataUrl,
+        pitch: 0,
+        gain: 100,
+        trimStart: 0,
+      });
+      setLastTriggeredLabel(`SMP → ${targetLane.toUpperCase()}`);
+      audioEngine.triggerDrum(targetLane);
+    } catch (err) {
+      alert(`Erreur chargement sample : ${err.message}`);
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  // Sauvegarder le kit complet dans localStorage
+  const handleSaveKitToStore = () => {
+    const nameToUse = customKitName.trim() || `Kit #${customKits.length + 1}`;
+    const updated = saveCustomKitToStorage({ name: nameToUse, lanes: laneConfigs }, nameToUse);
+    setCustomKits(updated);
+    setSelectedCustomKitUid(updated[0]?.uid || "");
+    setCustomKitName("");
+    setLastTriggeredLabel("KIT SAVED");
+  };
+
+  // Charger un kit sauvegardé (décode tous ses samples en mémoire audio)
+  const handleApplyLoadedKit = async (kitObj) => {
+    if (!kitObj?.lanes) return;
+    setLaneConfigs(kitObj.lanes);
+    setSelectedKitId("custom");
+    await Promise.all(
+      ALL_LANE_IDS.map((laneId) =>
+        audioEngine.loadSampleFromDataUrl(laneId, kitObj.lanes[laneId]?.sampleDataUrl || "")
+      )
+    );
+    setLastTriggeredLabel(`KIT ${kitObj.name.slice(0, 8).toUpperCase()}`);
+  };
+
+  const handleLoadKitFromStore = async (uid) => {
+    setSelectedCustomKitUid(uid);
+    const found = customKits.find((k) => k.uid === uid);
+    if (found) await handleApplyLoadedKit(found);
+  };
+
+  const handleDeleteKitFromStore = () => {
+    if (!selectedCustomKitUid) return;
+    const updated = deleteCustomKitFromStorage(selectedCustomKitUid);
+    setCustomKits(updated);
+    setSelectedCustomKitUid("");
+    setLastTriggeredLabel("KIT DEL");
+  };
+
+  const handleExportKit = () => {
+    const found = customKits.find((k) => k.uid === selectedCustomKitUid);
+    const name = customKitName.trim() || found?.name || "custom-kit";
+    const safe = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    exportKitToFile({ name, lanes: laneConfigs }, `dr202-kit-${safe}.json`);
+  };
+
+  const handleImportKit = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const imported = await importKitFromFile(file);
+      await handleApplyLoadedKit(imported);
+      const updated = saveCustomKitToStorage(imported, imported.name);
+      setCustomKits(updated);
+      setSelectedCustomKitUid(updated[0]?.uid || "");
+    } catch (err) {
+      alert(`Erreur import Kit : ${err.message}`);
+    } finally {
+      e.target.value = "";
+    }
   };
 
   // --- SAMPLE EXTERNE SUR LA PISTE PERC (OPTION A) ---
@@ -2565,9 +2666,11 @@ export default function App() {
             >
               <Shuffle className='w-3.5 h-3.5' /> RND BASS
             </button>
-            {/* Part Mute / Solo Strip */}
-{/* Part Mute / Solo & Kit Selector Strip */}
+            {/* Part Mute / Solo & Kit Selector Strip */}
             <div className='flex flex-wrap items-center gap-1.5'>
+              <span className='text-[10px] font-black uppercase tracking-wider text-zinc-400'>
+                LANE Edit:
+              </span>
               <div className='flex items-center gap-1 bg-zinc-900 rounded-lg px-2 py-1 border border-zinc-700'>
                 <span className='text-[9px] font-black uppercase tracking-wider text-amber-400'>
                   Kit:
@@ -2589,10 +2692,28 @@ export default function App() {
                 </select>
               </div>
 
-              {["KICK", "SNARE", "HATS", "PERC", "BASS"].map((group) => {
+              {["KICK", "SNARE", "CLAP", "RIM", "CL HAT", "OH HAT", "HATS", "TOM", "PERC", "BASS"].map((group) => {
                 const muted = mutedParts[group];
                 const soloed = soloPart === group;
-                const currentFlavor = partKitTypes[group];
+                const groupVoices = DRUM_VOICES.filter((v) => v.group === group);
+                const currentFlavor =
+                  laneConfigs[groupVoices[0]?.id]?.synthType || "dr202";
+
+                const applyFlavorToGroup = (nextFlavor) => {
+                  setSelectedKitId("custom");
+                  setLaneConfigs((prev) => {
+                    const next = { ...prev };
+                    groupVoices.forEach((v) => {
+                      next[v.id] = {
+                        ...next[v.id],
+                        synthType: nextFlavor,
+                        useSample: false,
+                      };
+                    });
+                    return next;
+                  });
+                  setLastTriggeredLabel(`${group}:${nextFlavor.toUpperCase()}`);
+                };
 
                 return (
                   <div
@@ -2615,10 +2736,13 @@ export default function App() {
                     {group !== "BASS" && (
                       <select
                         value={currentFlavor}
-                        onChange={(e) =>
-                          handleChangeSinglePartType(group, e.target.value)
-                        }
-                        onDoubleClick={() => handleCycleSinglePartType(group)}
+                        onChange={(e) => applyFlavorToGroup(e.target.value)}
+                        onDoubleClick={() => {
+                          const nextIdx =
+                            (KIT_FLAVORS.indexOf(currentFlavor) + 1) %
+                            KIT_FLAVORS.length;
+                          applyFlavorToGroup(KIT_FLAVORS[nextIdx]);
+                        }}
                         title={`Type de son pour ${group} (à la volée)`}
                         className='bg-zinc-950 text-amber-300 text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer'
                       >
@@ -2673,6 +2797,193 @@ export default function App() {
                     {voice.label}
                   </button>
                 ))}
+                {activeTrack === "DRUM" && (() => {
+              const activeLaneCfg = laneConfigs[selectedDrumVoice] || {};
+              return (
+                <div className='w-full bg-zinc-900 border border-zinc-700 rounded-xl p-2 flex flex-wrap items-center justify-between gap-2 text-[10px]'>
+                  {/* 1. Paramétrage de la lane active (Synthé ou Sample + Pitch/Gain/Trim) */}
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <span className='font-black uppercase text-amber-400'>
+                      Lane [{selectedDrumVoice}]:
+                    </span>
+
+                    <select
+                      value={activeLaneCfg.synthType || "dr202"}
+                      onChange={(e) =>
+                        updateSingleLane(selectedDrumVoice, {
+                          synthType: e.target.value,
+                          useSample: false,
+                        })
+                      }
+                      className='bg-zinc-950 text-zinc-100 text-[10px] font-bold uppercase px-1.5 py-1 rounded border border-zinc-700'
+                    >
+                      {KIT_FLAVORS.map((f) => (
+                        <option key={f} value={f}>
+                          Synth: {f}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type='button'
+                      onClick={() => laneSampleInputRef.current?.click()}
+                      className='px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-zinc-950 font-black uppercase cursor-pointer'
+                    >
+                      {activeLaneCfg.sampleName
+                        ? `WAV: ${activeLaneCfg.sampleName.slice(0, 10)}`
+                        : "+ UPLOAD SON"}
+                    </button>
+                    <input
+                      ref={laneSampleInputRef}
+                      type='file'
+                      accept='audio/*,.wav,.mp3,.ogg'
+                      onChange={handleUploadLaneSample}
+                      className='hidden'
+                    />
+
+                    {activeLaneCfg.sampleName && (
+                      <button
+                        type='button'
+                        onClick={() =>
+                          updateSingleLane(selectedDrumVoice, {
+                            useSample: !activeLaneCfg.useSample,
+                          })
+                        }
+                        className={`px-2 py-1 rounded font-black uppercase cursor-pointer ${
+                          activeLaneCfg.useSample
+                            ? "bg-emerald-500 text-zinc-950"
+                            : "bg-zinc-800 text-zinc-400 border border-zinc-600"
+                        }`}
+                      >
+                        {activeLaneCfg.useSample ? "SMP ON" : "SMP OFF"}
+                      </button>
+                    )}
+
+                    {/* Pitch (-24..+24 st) */}
+                    {activeLaneCfg.useSample && (
+                      <label className='flex items-center gap-1 font-mono text-zinc-300'>
+                        Pitch:
+                        <input
+                          type='number'
+                          min={-24}
+                          max={24}
+                          value={activeLaneCfg.pitch ?? 0}
+                          onChange={(e) =>
+                            updateSingleLane(selectedDrumVoice, {
+                              pitch: Math.max(-24, Math.min(24, Number(e.target.value) || 0)),
+                            })
+                          }
+                          className='w-11 bg-zinc-950 text-amber-400 text-center px-1 py-0.5 rounded border border-zinc-700'
+                        />
+                        st
+                      </label>
+                    )}
+
+                    {/* Trim Start (0..90%) */}
+                    {activeLaneCfg.useSample && (
+                      <label className='flex items-center gap-1 font-mono text-zinc-300'>
+                        Start:
+                        <input
+                          type='number'
+                          min={0}
+                          max={90}
+                          value={activeLaneCfg.trimStart ?? 0}
+                          onChange={(e) =>
+                            updateSingleLane(selectedDrumVoice, {
+                              trimStart: Math.max(0, Math.min(90, Number(e.target.value) || 0)),
+                            })
+                          }
+                          className='w-11 bg-zinc-950 text-cyan-300 text-center px-1 py-0.5 rounded border border-zinc-700'
+                        />
+                        %
+                      </label>
+                    )}
+
+                    {/* Gain par lane (0..150%) */}
+                    <label className='flex items-center gap-1 font-mono text-zinc-300'>
+                      Vol:
+                      <input
+                        type='number'
+                        min={0}
+                        max={150}
+                        value={activeLaneCfg.gain ?? 100}
+                        onChange={(e) =>
+                          updateSingleLane(selectedDrumVoice, {
+                            gain: Math.max(0, Math.min(150, Number(e.target.value) || 0)),
+                          })
+                        }
+                        className='w-11 bg-zinc-950 text-emerald-400 text-center px-1 py-0.5 rounded border border-zinc-700'
+                      />
+                      %
+                    </label>
+                  </div>
+
+                  {/* 2. Sauvegarde / Export / Import du Kit complet (13 lanes) */}
+                  <div className='flex flex-wrap items-center gap-1.5 border-t sm:border-t-0 pt-1.5 sm:pt-0 border-zinc-800'>
+                    <input
+                      type='text'
+                      value={customKitName}
+                      onChange={(e) => setCustomKitName(e.target.value)}
+                      placeholder='Nom du Kit...'
+                      className='w-28 bg-zinc-950 text-zinc-200 text-[10px] px-2 py-1 rounded border border-zinc-700'
+                    />
+                    <button
+                      type='button'
+                      onClick={handleSaveKitToStore}
+                      className='px-2 py-1 rounded bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black uppercase cursor-pointer'
+                    >
+                      SAVE KIT
+                    </button>
+
+                    <select
+                      value={selectedCustomKitUid}
+                      onChange={(e) => handleLoadKitFromStore(e.target.value)}
+                      className='bg-zinc-950 text-zinc-200 text-[10px] px-1.5 py-1 rounded border border-zinc-700 max-w-[130px]'
+                    >
+                      <option value=''>-- Mes Kits ({customKits.length}) --</option>
+                      {customKits.map((k) => (
+                        <option key={k.uid} value={k.uid}>
+                          {k.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedCustomKitUid && (
+                      <button
+                        type='button'
+                        onClick={handleDeleteKitFromStore}
+                        className='px-1.5 py-1 rounded bg-zinc-800 hover:bg-red-700 text-red-400 hover:text-white font-bold cursor-pointer'
+                      >
+                        ✕
+                      </button>
+                    )}
+
+                    <button
+                      type='button'
+                      onClick={handleExportKit}
+                      className='px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-emerald-400 font-black uppercase border border-zinc-600 cursor-pointer'
+                    >
+                      EXP KIT
+                    </button>
+
+                    <button
+                      type='button'
+                      onClick={() => kitFileInputRef.current?.click()}
+                      className='px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-cyan-300 font-black uppercase border border-zinc-600 cursor-pointer'
+                    >
+                      IMP KIT
+                    </button>
+                    <input
+                      ref={kitFileInputRef}
+                      type='file'
+                      accept='.json,application/json'
+                      onChange={handleImportKit}
+                      className='hidden'
+                    />
+                  </div>
+                </div>
+              );
+            })()}
               </div>
             ) : (
               <div className='flex flex-wrap items-center gap-3'>
