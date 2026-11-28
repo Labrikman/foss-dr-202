@@ -2630,14 +2630,6 @@ export default function App() {
                 className='hidden'
               />
             </div>
-            <button
-              type="button"
-              onClick={() => sampleFileInputRef.current?.click()}
-              title="Charger un fichier audio (.wav, .mp3, .ogg) sur la piste PERC"
-              className="min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-zinc-700 hover:bg-zinc-600 text-cyan-300 border border-zinc-900 shadow active:translate-y-0.5 cursor-pointer"
-            >
-              {loadedSampleName ? `SMP: ${loadedSampleName.slice(0, 10)}` : "LOAD AUDIO"}
-            </button>
             <input
               ref={sampleFileInputRef}
               type="file"
@@ -2648,7 +2640,7 @@ export default function App() {
             <button
               onClick={handleRandomizePreset}
               title='Générer un pattern complet aléatoire'
-              className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-purple-700 hover:bg-purple-600 text-white border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
+              className='min-h-10 px-3 rounded-lg text-[10px] font-black tracking-wider uppercase bg-yellow-600 hover:bg-yellow-800 text-black border border-zinc-900 shadow active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer'
             >
               <Shuffle className='w-3.5 h-3.5' /> RANDOMIZER
             </button>
@@ -2669,7 +2661,7 @@ export default function App() {
             {/* Part Mute / Solo & Kit Selector Strip */}
             <div className='flex flex-wrap items-center gap-1.5'>
               <span className='text-[10px] font-black uppercase tracking-wider text-zinc-400'>
-                LANE Edit:
+                LANE EDIT & MIXER:
               </span>
               <div className='flex items-center gap-1 bg-zinc-900 rounded-lg px-2 py-1 border border-zinc-700'>
                 <span className='text-[9px] font-black uppercase tracking-wider text-amber-400'>
